@@ -1,0 +1,43 @@
+[project]
+authors = [
+    { name = "Misael Gonzalez (Rayference)" },
+    { name = "Nicolae Marton (Rayference)" },
+]
+description = "Synthetic scene generator for the ESA DTE-S2GOS service."
+name = "s2gos-generator"
+requires-python = ">=3.10"
+version = "0.0.1"
+dependencies = []
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+s2gos_generator = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[project.optional-dependencies]
+test = ["pytest"]
+dev = []
+docs = ["mkdocs"]
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev", "test", "docs"], solve-group = "default" }
+test = { features = ["test"], solve-group = "default" }
+
+[tool.ruff]
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+ignore = ["E501", "F821"]
+isort = { relative-imports-order = "closest-to-furthest" }
+per-file-ignores = { "*.ipynb" = ["E402"] }
+select = ["I", "F", "E"]
+

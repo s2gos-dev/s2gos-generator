@@ -1,87 +1,25 @@
-"""Scene generation pipeline."""
+"""Scene generation pipeline orchestrator."""
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
-from dataclasses import dataclass
+from typing import List, Tuple
 import json
 
+from .config import SceneGenerationConfig
+from .assets import SceneAssets
 from ..assets.dem import DEMProcessor, create_aoi_polygon
 from ..assets.landcover import LandCoverProcessor
 from ..assets.mesh import MeshGenerator
 from ..assets.texture import TextureGenerator
-from .description import SceneDescription, create_default_materials
+from ..scene import SceneDescription, create_default_materials
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-
-@dataclass
-class SceneConfig:
-    """Configuration for scene generation."""
-    center_lat: float
-    center_lon: float
-    aoi_size_km: float
-    
-    dem_index_path: Path
-    dem_root_dir: Path
-    landcover_index_path: Path
-    landcover_root_dir: Path
-    
-    output_dir: Path
-    scene_name: str
-    
-    target_resolution_m: float = 30.0
-    generate_texture_preview: bool = True
-    handle_dem_nans: bool = True
-    dem_fillna_value: float = 0.0
-    
-    def to_dict(self) -> Dict:
-        """Convert config to dictionary for serialization."""
-        return {
-            'center_lat': self.center_lat,
-            'center_lon': self.center_lon,
-            'aoi_size_km': self.aoi_size_km,
-            'dem_index_path': str(self.dem_index_path),
-            'dem_root_dir': str(self.dem_root_dir),
-            'landcover_index_path': str(self.landcover_index_path),
-            'landcover_root_dir': str(self.landcover_root_dir),
-            'output_dir': str(self.output_dir),
-            'scene_name': self.scene_name,
-            'target_resolution_m': self.target_resolution_m,
-            'generate_texture_preview': self.generate_texture_preview,
-            'handle_dem_nans': self.handle_dem_nans,
-            'dem_fillna_value': self.dem_fillna_value
-        }
-
-
-@dataclass
-class SceneAssets:
-    """Container for generated scene assets."""
-    dem_file: Optional[Path] = None
-    landcover_file: Optional[Path] = None
-    mesh_file: Optional[Path] = None
-    selection_texture_file: Optional[Path] = None
-    preview_texture_file: Optional[Path] = None
-    config_file: Optional[Path] = None
-    scene_description_file: Optional[Path] = None
-    
-    def to_dict(self) -> Dict:
-        """Convert assets to dictionary."""
-        return {
-            'dem_file': str(self.dem_file) if self.dem_file else None,
-            'landcover_file': str(self.landcover_file) if self.landcover_file else None,
-            'mesh_file': str(self.mesh_file) if self.mesh_file else None,
-            'selection_texture_file': str(self.selection_texture_file) if self.selection_texture_file else None,
-            'preview_texture_file': str(self.preview_texture_file) if self.preview_texture_file else None,
-            'config_file': str(self.config_file) if self.config_file else None,
-            'scene_description_file': str(self.scene_description_file) if self.scene_description_file else None
-        }
 
 
 class SceneGenerationPipeline:
     """Main pipeline orchestrator for generating 3D scenes from earth observation data."""
 
-    def __init__(self, config: SceneConfig):
+    def __init__(self, config: SceneGenerationConfig):
         """Initialize the pipeline with configuration."""
         self.config = config
         self.assets = SceneAssets()
@@ -181,7 +119,7 @@ class SceneGenerationPipeline:
         
         return mesh_path
 
-    def generate_textures(self, landcover_file_path: Path) -> Tuple[Path, Optional[Path]]:
+    def generate_textures(self, landcover_file_path: Path) -> Tuple[Path, Path]:
         """Generate texture maps from land cover data."""
         logging.info("=== Generating Textures ===")
         
@@ -320,34 +258,3 @@ class SceneGenerationPipeline:
             self.generate_scene_description()
         
         return self.assets
-
-
-if __name__ == '__main__':
-    # Example usage
-    try:
-        # Create configuration
-        config = SceneConfig(
-            center_lat=-23.6002,
-            center_lon=15.1195,
-            aoi_size_km=10.0,
-            dem_index_path=Path('/home/gonzalezm/dreams-scenes/packages/dreams_assets/src/dreams_assets/data/dem_index.feather'),
-            dem_root_dir=Path('/media/DATA/DEM/'),
-            landcover_index_path=Path('/home/gonzalezm/s2gos-generator/s2gos-generator/landcover_index.feather'),
-            landcover_root_dir=Path('/home/gonzalezm/Data/'),
-            output_dir=Path('./output'),
-            scene_name='gobabeb_test',
-            target_resolution_m=30.0
-        )
-        
-        # Create and run pipeline
-        pipeline = SceneGenerationPipeline(config)
-        assets = pipeline.run_full_pipeline()
-        
-        print("\n=== Generated Assets ===")
-        for asset_name, asset_path in assets.to_dict().items():
-            if asset_path:
-                print(f"{asset_name}: {asset_path}")
-                
-    except Exception as e:
-        logging.error(f"Example execution failed: {e}")
-        logging.error("Please check the configuration paths.")

@@ -7,7 +7,7 @@ import numpy as np
 import sys
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from s2gos_generator.scene import SceneConfig, SceneGenerationPipeline
+from s2gos_generator.core import SceneGenerationConfig, SceneGenerationPipeline
 
 import mitsuba as mi
 mi.set_variant("scalar_rgb")
@@ -106,7 +106,7 @@ def simple_example():
     print("Simple S2GOS Scene Generation Example")
     print("=" * 40)
     
-    config = SceneConfig(
+    config = SceneGenerationConfig(
         center_lat=27.960449,
         center_lon=-15.577022,
         aoi_size_km=100.0,
@@ -162,7 +162,7 @@ def step_by_step_example():
     print("\nStep-by-Step Pipeline Example")
     print("=" * 30)
     
-    config = SceneConfig(
+    config = SceneGenerationConfig(
         center_lat=-23.6002,
         center_lon=15.1195,
         aoi_size_km=150.0,

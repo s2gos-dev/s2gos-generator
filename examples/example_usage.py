@@ -124,25 +124,26 @@ def simple_example():
     try:
         # Create and run the pipeline
         pipeline = SceneGenerationPipeline(config)
-        assets = pipeline.run_full_pipeline()
+        scene_config = pipeline.run_full_pipeline()
         
-        print(f"\nSuccess! Scene generated at: {assets.config_file.parent}")
+        print(f"\nSuccess! Scene generated: {scene_config.name}")
+        print(f"Location: {scene_config.metadata.center_lat}, {scene_config.metadata.center_lon}")
+        print(f"Scene file: {pipeline.output_dir / f'{scene_config.name}.yml'}")
         print(f"Key files:")
-        print(f"  3D Mesh: {assets.mesh_file}")
-        print(f"  Material Texture:   {assets.selection_texture_file}")
-        print(f"  Configuration:      {assets.config_file}")
+        print(f"  3D Mesh: {pipeline.assets.mesh_file}")
+        print(f"  Material Texture: {pipeline.assets.selection_texture_file}")
         
-        if assets.mesh_file and assets.selection_texture_file:
-            render_output = assets.config_file.parent / "scene_render.png"
+        if pipeline.assets.mesh_file and pipeline.assets.selection_texture_file:
+            render_output = pipeline.output_dir / "scene_render.png"
             render_success = render_scene(
-                assets.mesh_file, 
-                assets.selection_texture_file, 
+                pipeline.assets.mesh_file, 
+                pipeline.assets.selection_texture_file, 
                 render_output
             )
             if render_success:
-                print(f"  Rendered Image:     {render_output}")
+                print(f"  Rendered Image: {render_output}")
         
-        return assets
+        return scene_config
         
     except FileNotFoundError as e:
         print(f"\nMissing required file: {e}")
@@ -196,12 +197,16 @@ def step_by_step_example():
         pipeline.run_partial_pipeline(['textures'])
         print(f"  Texture saved: {pipeline.assets.selection_texture_file}")
         
-        print("Step 5: Saving metadata...")
-        pipeline.run_partial_pipeline(['metadata'])
-        print(f"  Metadata saved: {pipeline.assets.config_file}")
-        
-        print(f"\nStep-by-step generation complete!")
-        return pipeline.assets
+        print("Step 5: Generating scene configuration...")
+        scene_config = pipeline.run_partial_pipeline(['scene'])
+        if hasattr(scene_config, 'name'):  # If returned a scene config
+            print(f"  Scene config saved: {pipeline.output_dir / f'{scene_config.name}.yml'}")
+            print(f"\nStep-by-step generation complete!")
+            return scene_config
+        else:  # If returned assets
+            print(f"  Assets generated: {pipeline.assets.config_file}")
+            print(f"\nStep-by-step generation complete!")
+            return pipeline.assets
         
     except Exception as e:
         print(f"\nStep-by-step example failed: {e}")
@@ -217,9 +222,9 @@ if __name__ == "__main__":
     print("to match your system configuration.")
     print()
     
-    simple_assets = simple_example()
+    simple_scene = simple_example()
     
-    # step_assets = step_by_step_example()
+    # step_scene = step_by_step_example()
     
     print("\n" + "=" * 50)
     print("Example complete!")

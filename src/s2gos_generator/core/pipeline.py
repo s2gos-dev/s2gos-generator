@@ -11,7 +11,7 @@ from ..assets.dem import DEMProcessor, create_aoi_polygon
 from ..assets.landcover import LandCoverProcessor
 from ..assets.mesh import MeshGenerator
 from ..assets.texture import TextureGenerator
-from ..scene import SceneDescription, create_default_materials
+# Scene description removed - using single YAML format
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -145,116 +145,45 @@ class SceneGenerationPipeline:
         
         return selection_texture_path, preview_texture_path
 
-    def save_metadata(self) -> Path:
-        """Save scene configuration and asset metadata."""
-        logging.info("=== Saving Metadata ===")
+    def _create_scene_config(self):
+        """Create complete scene configuration from generated assets."""
+        from ..scene_loading import create_s2gos_scene
         
-        metadata = {
-            'config': self.config.to_dict(),
-            'assets': self.assets.to_dict(),
-            'aoi_bounds': list(self.aoi_polygon.bounds) if hasattr(self, 'aoi_polygon') else None
-        }
-        
-        metadata_path = self.output_dir / f"{self.config.scene_name}_metadata.json"
-        with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=2)
-        
-        self.assets.config_file = metadata_path
-        logging.info(f"Metadata saved: {metadata_path}")
-        return metadata_path
+        # Create scene configuration with all metadata  
+        return create_s2gos_scene(
+            scene_name=self.config.scene_name,
+            mesh_path=str(self.assets.mesh_file.relative_to(self.output_dir)),
+            texture_path=str(self.assets.selection_texture_file.relative_to(self.output_dir)),
+            center_lat=self.config.center_lat,
+            center_lon=self.config.center_lon,
+            aoi_size_km=self.config.aoi_size_km,
+            resolution_m=self.config.target_resolution_m,
+            dem_index_path=str(self.config.dem_index_path),
+            landcover_index_path=str(self.config.landcover_index_path)
+        )
 
-    def generate_scene_description(self) -> Path:
-        """Generate scene description file."""
-        logging.info("=== Generating Scene Description ===")
-        
-        scene_desc = SceneDescription.from_config(self.config)
-        
-        # Add default materials
-        default_materials = create_default_materials()
-        for name, material in default_materials.items():
-            scene_desc.materials[name] = material
-        
-        # Add geometry if available
-        if self.assets.mesh_file and self.assets.selection_texture_file:
-            scene_desc.add_geometry(
-                mesh_path=self.assets.mesh_file,
-                texture_path=self.assets.selection_texture_file
-            )
-        
-        # Save scene description
-        scene_desc_path = self.output_dir / f"{self.config.scene_name}_scene.yml"
-        scene_desc.save_yaml(scene_desc_path)
-        
-        self.assets.scene_description_file = scene_desc_path
-        logging.info(f"Scene description saved: {scene_desc_path}")
-        return scene_desc_path
-
-    def run_full_pipeline(self) -> SceneAssets:
+    def run_full_pipeline(self):
         """Execute the complete scene generation pipeline."""
         logging.info(f"Starting full pipeline for scene '{self.config.scene_name}'")
         
         try:
-            # Step 1: Generate AOI
             self.generate_aoi()
-            
-            # Step 2: Process DEM data
             dem_file = self.process_dem()
-            
-            # Step 3: Process land cover data
             landcover_file = self.process_landcover()
-            
-            # Step 4: Generate 3D mesh
             mesh_file = self.generate_mesh(dem_file)
-            
-            # Step 5: Generate textures
             texture_selection, texture_preview = self.generate_textures(landcover_file)
             
-            # Step 6: Save metadata
-            metadata_file = self.save_metadata()
+            scene_config = self._create_scene_config()
+            scene_config_file = self.output_dir / f"{self.config.scene_name}.yml"
+            scene_config.save_yaml(scene_config_file)
             
-            # Step 7: Generate scene description
-            scene_desc_file = self.generate_scene_description()
+            self.assets.config_file = scene_config_file
             
             logging.info("=== Pipeline Complete ===")
-            logging.info(f"Scene assets saved to: {self.output_dir}")
+            logging.info(f"Scene configuration saved to: {scene_config_file}")
             
-            return self.assets
+            return scene_config
             
         except Exception as e:
             logging.error(f"Pipeline failed: {e}")
             raise
-
-    def run_partial_pipeline(self, steps: List[str]) -> SceneAssets:
-        """Execute only specific steps of the pipeline."""
-        logging.info(f"Running partial pipeline with steps: {steps}")
-        
-        if 'aoi' in steps:
-            self.generate_aoi()
-        
-        if 'dem' in steps:
-            if not hasattr(self, 'aoi_polygon'):
-                self.generate_aoi()
-            self.process_dem()
-        
-        if 'landcover' in steps:
-            if not hasattr(self, 'aoi_polygon'):
-                self.generate_aoi()
-            self.process_landcover()
-        
-        if 'mesh' in steps:
-            if not self.assets.dem_file:
-                raise ValueError("DEM file required for mesh generation. Run 'dem' step first.")
-            self.generate_mesh(self.assets.dem_file)
-        
-        if 'textures' in steps:
-            if not self.assets.landcover_file:
-                raise ValueError("Land cover file required for texture generation. Run 'landcover' step first.")
-            self.generate_textures(self.assets.landcover_file)
-        
-        if 'metadata' in steps:
-            self.save_metadata()
-        
-        if 'scene_description' in steps:
-            self.generate_scene_description()
-        
-        return self.assets

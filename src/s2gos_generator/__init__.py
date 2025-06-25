@@ -12,7 +12,8 @@ def _import_scene():
     return SceneDescription, MaterialDefinition
 
 def _import_simulation():
-    from .simulation import SimulationConfig, create_s2gos_scene
+    from .simulation import SimulationConfig
+    from .scene_loading import create_s2gos_scene
     return SimulationConfig, create_s2gos_scene
 
 
@@ -56,6 +57,8 @@ def __getattr__(name):
         return getattr(__import__('s2gos_generator.core', fromlist=[name]), name)
     elif name in ["SceneDescription", "MaterialDefinition"]:
         return getattr(__import__('s2gos_generator.scene', fromlist=[name]), name)
-    elif name in ["SimulationConfig", "create_s2gos_scene"]:
+    elif name == "SimulationConfig":
         return getattr(__import__('s2gos_generator.simulation', fromlist=[name]), name)
+    elif name == "create_s2gos_scene":
+        return getattr(__import__('s2gos_generator.scene_loading', fromlist=[name]), name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

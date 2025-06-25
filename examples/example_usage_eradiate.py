@@ -223,7 +223,7 @@ def create_eradiate_scene(mesh_file, texture_file):
                 "type": "delta",
                 "wavelengths": [440, 550, 660] * ureg.nm  # RGB wavelengths
             },
-            "spp": 512  # Match original Mitsuba quality
+            "spp": 32  # Match original Mitsuba quality
         }
     ]
     
@@ -307,55 +307,41 @@ def simple_eradiate_example():
         landcover_index_path=Path("/home/gonzalezm/s2gos/s2gos-generator/src/s2gos_generator/data/landcover_index.feather"), 
         landcover_root_dir=Path("/home/gonzalezm/Data"),
         
-        output_dir=Path("./eradiate_example_output_la_palma"),
-        scene_name="eradiate_example_scene_la_palma",
+        output_dir=Path("./eradiate_example_output_gran_canaria"),
+        scene_name="eradiate_example_scene_gran_canaria",
         target_resolution_m=30.0
     )
     
     try:
         # Create and run the pipeline
         pipeline = SceneGenerationPipeline(config)
-        assets = pipeline.run_full_pipeline()
+        scene_config = pipeline.run_full_pipeline()
         
-        print(f"\nSuccess! Scene generated at: {assets.config_file.parent}")
+        print(f"\nSuccess! Scene generated: {scene_config.name}")
+        print(f"Location: {scene_config.metadata.center_lat}, {scene_config.metadata.center_lon}")
+        print(f"Scene file: {pipeline.output_dir / f'{scene_config.name}.yml'}")
         print(f"Key files:")
-        print(f"  3D Mesh: {assets.mesh_file}")
-        print(f"  Material Texture: {assets.selection_texture_file}")
-        print(f"  Configuration: {assets.config_file}")
+        print(f"  3D Mesh: {pipeline.assets.mesh_file}")
+        print(f"  Material Texture: {pipeline.assets.selection_texture_file}")
         
-        # Create and save scene configuration
-        if assets.mesh_file and assets.selection_texture_file:
-            from s2gos_generator.simulation import create_s2gos_scene
-            
-            # Create complete scene configuration
-            scene_config = create_s2gos_scene(
-                scene_name=config.scene_name,
-                mesh_path=str(assets.mesh_file),
-                texture_path=str(assets.selection_texture_file),
-                sensor_height=53612.90342332,
-                spp=512
-            )
-            
-            # Save scene configuration
-            scene_config_path = assets.config_file.parent / "scene_config.yml"
-            scene_config.save_yaml(scene_config_path)
-            print(f"  Scene Config: {scene_config_path}")
-            
-            # Render with Eradiate
-            eradiate_output_dir = assets.config_file.parent / "eradiate_renders"
+        # Render with Eradiate
+        if pipeline.assets.mesh_file and pipeline.assets.selection_texture_file:
+            eradiate_output_dir = pipeline.output_dir / "eradiate_renders"
             render_success = render_eradiate_scene(
-                assets.mesh_file,
-                assets.selection_texture_file, 
+                pipeline.assets.mesh_file,
+                pipeline.assets.selection_texture_file, 
                 eradiate_output_dir
             )
             if render_success:
                 print(f"  Eradiate Results: {eradiate_output_dir}")
                 
-            # Cloud deployment ready
-            print(f"\n  ✓ Scene ready for cloud deployment: {scene_config_path}")
-            print(f"  ✓ Upload YAML + spectral data files to run remotely")
+        # Cloud deployment ready
+        scene_yaml_path = pipeline.output_dir / f'{scene_config.name}.yml'
+        print(f"\n  ✓ Scene ready for cloud deployment: {scene_yaml_path}")
+        print(f"  ✓ Contains {len(scene_config.materials)} materials and complete configuration")
+        print(f"  ✓ Upload YAML + spectral data files to run remotely")
         
-        return assets
+        return scene_config
         
     except FileNotFoundError as e:
         print(f"\nMissing required file: {e}")

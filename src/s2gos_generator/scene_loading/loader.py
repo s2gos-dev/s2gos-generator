@@ -18,9 +18,10 @@ try:
 except ImportError:
     ERADIATE_AVAILABLE = False
 
-from .config import SimulationConfig, Material
-from .sensors import Sensor
-from .atmosphere import create_atmosphere
+from .config import SceneConfig
+from ..materials import Material
+from ..simulation.sensors import Sensor, PerspectiveSensor
+from ..simulation.atmosphere import create_atmosphere
 
 
 class SceneLoader:
@@ -35,7 +36,7 @@ class SceneLoader:
     
     def load_eradiate_experiment(self, yaml_path: Path) -> AtmosphereExperiment:
         """Load scene as eradiate experiment."""
-        config = SimulationConfig.from_yaml(yaml_path)
+        config = SceneConfig.from_yaml(yaml_path)
         
         # Load spectral data and create eradiate components
         spectra = self._load_spectra(config.materials)
@@ -74,7 +75,7 @@ class SceneLoader:
         
         return spectra
     
-    def _create_eradiate_materials(self, config: SimulationConfig, spectra: Dict[str, InterpolatedSpectrum]):
+    def _create_eradiate_materials(self, config: SceneConfig, spectra: Dict[str, InterpolatedSpectrum]):
         """Create eradiate materials and parameter mapping."""
         kdict = {}
         kpmap = {}
@@ -143,7 +144,7 @@ class SceneLoader:
                 flags=UpdateParameter.Flags.SPECTRAL if param == "wavelength" else 0
             )
     
-    def _add_surface(self, kdict: dict, config: SimulationConfig):
+    def _add_surface(self, kdict: dict, config: SceneConfig):
         """Add surface geometry to kernel dict."""
         surface = config.surface
         texture_path = Path(surface["selection_texture"])
@@ -192,6 +193,7 @@ class SceneLoader:
         for sensor in sensors:
             measure = sensor.to_dict()
             # Convert wavelengths to eradiate format
-            measure["srf"]["wavelengths"] = [w * ureg.nm for w in measure["srf"]["wavelengths"]]
+            if "srf" in measure and "wavelengths" in measure["srf"]:
+                measure["srf"]["wavelengths"] = [w * ureg.nm for w in measure["srf"]["wavelengths"]]
             measures.append(measure)
         return measures or [PerspectiveSensor().to_dict()]

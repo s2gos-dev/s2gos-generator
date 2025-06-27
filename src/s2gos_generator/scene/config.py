@@ -2,11 +2,26 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 import yaml
+import os
 from datetime import datetime
 
 from ..materials import Material, MaterialRegistry
+
+
+def _serialize_path(path: Union[Path, str, None]) -> Optional[str]:
+    """Serialize Path object to string using __fspath__ protocol."""
+    if path is None:
+        return None
+    return os.fspath(path)
+
+
+def _deserialize_path(path_str: Optional[str]) -> Optional[Path]:
+    """Deserialize string to Path object."""
+    if path_str is None:
+        return None
+    return Path(path_str)
 
 
 @dataclass
@@ -224,7 +239,7 @@ def create_s2gos_scene(
             "selection_texture": buffer_texture_path,
             "shape_size": buffer_size_km * 1000.0,
             "mask_edge_length": aoi_size_km * 1000.0,
-            "mask_texture": str(mask_path.relative_to(output_dir)),
+            "mask_texture": _serialize_path(mask_path.relative_to(output_dir)),
             "materials": buffer_material_mapping
         }
         
@@ -255,7 +270,7 @@ def create_s2gos_scene(
             "material": "water",
             "elevation": bg_elevation,
             "mask_edge_length": buffer_size_km * 1000.0,
-            "mask_texture": str(background_mask_path.relative_to(output_dir))
+            "mask_texture": _serialize_path(background_mask_path.relative_to(output_dir))
         }
     
     return SceneConfig(

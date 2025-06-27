@@ -100,7 +100,7 @@ class DEMProcessor:
 
         return merged_ds
 
-    def _regrid_dem(
+    def fillna_value(
         self, 
         dem_ds: xr.Dataset, 
         target_resolution_m: float, 
@@ -110,40 +110,18 @@ class DEMProcessor:
         aoi_size_km: float
     ) -> xr.Dataset:
         """Regrid DEM to target resolution using oblique mercator projection."""
-        import numpy as np
+        from .datautil import regrid_to_projection
         
-        domain_width_m = aoi_size_km * 1000.0
-        
-        half_width = domain_width_m / 2.0
-        num_points = int(round(domain_width_m / target_resolution_m))
-        start_coord = -half_width + (target_resolution_m / 2.0)
-        end_coord = half_width - (target_resolution_m / 2.0)
-        target_x = np.linspace(start_coord, end_coord, num_points)
-        target_y = target_x.copy()
-        
-        from pyproj import Proj
-        proj = Proj(f"+proj=omerc +lat_0={center_lat} +lonc={center_lon} +alpha=0 +gamma=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +units=m")
-        
-        if 'y' in dem_ds.dims and 'x' in dem_ds.dims:
-            dem_ds = dem_ds.rename({'y': 'lat', 'x': 'lon'})
-        
-        ys, xs = np.meshgrid(target_y, target_x, indexing='ij')
-        lons, lats = proj(xs.ravel(), ys.ravel(), inverse=True)
-        lonlats = xr.Dataset({
-            "lon": (("y", "x"), lons.reshape(xs.shape)), 
-            "lat": (("y", "x"), lats.reshape(xs.shape))
-        })
-        
-        ds_regridded = dem_ds.interp(
-            lonlats,
-            method="linear",
-            kwargs={"bounds_error": False, "fill_value": None}
+        return regrid_to_projection(
+            dataset=dem_ds,
+            target_resolution_m=target_resolution_m,
+            center_lat=center_lat,
+            center_lon=center_lon,
+            aoi_size_km=aoi_size_km,
+            interpolation_method="linear",
+            fillna_value=fillna_value,
+            data_variable="elevation"
         )
-        ds_regridded = ds_regridded.assign_coords({"y": target_y, "x": target_x})
-        
-        ds_regridded["elevation"] = ds_regridded["elevation"].fillna(fillna_value).drop_vars(["lon", "lat"], errors='ignore')
-        
-        return ds_regridded
 
     def generate_dem(
         self,

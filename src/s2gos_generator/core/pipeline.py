@@ -7,6 +7,7 @@ import json
 
 from .config import SceneGenerationConfig
 from .assets import SceneAssets
+from .exceptions import ProcessingError, DataNotFoundError
 from ..assets.dem import DEMProcessor, create_aoi_polygon
 from ..assets.landcover import LandCoverProcessor
 from ..assets.mesh import MeshGenerator
@@ -315,6 +316,10 @@ class SceneGenerationPipeline:
             
             return scene_config
             
+        except FileNotFoundError as e:
+            raise DataNotFoundError(f"Required file not found: {e}", str(e))
+        except PermissionError as e:
+            raise DataNotFoundError(f"Permission denied accessing file: {e}", str(e))
         except Exception as e:
             logging.error(f"Pipeline failed: {e}")
-            raise
+            raise ProcessingError(f"Pipeline execution failed", "pipeline", e)

@@ -10,6 +10,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Import lightweight modules directly, defer heavy ones
 from .scene import SceneDescription, SceneConfig, SceneMetadata, create_s2gos_scene
 from .simulation import SimulationConfig
+from .core.exceptions import (
+    S2GOSError, DataNotFoundError, ConfigurationError, ProcessingError,
+    RegridError, GeospatialError, MaterialError
+)
 
 
 def generate_scene(
@@ -59,5 +63,7 @@ def __getattr__(name):
 __all__ = [
     "SceneGenerationConfig", "SceneGenerationPipeline", "SceneAssets",
     "SceneDescription", "SceneConfig", "SceneMetadata", "create_s2gos_scene",
-    "SimulationConfig", "generate_scene"
+    "SimulationConfig", "generate_scene",
+    "S2GOSError", "DataNotFoundError", "ConfigurationError", "ProcessingError",
+    "RegridError", "GeospatialError", "MaterialError"
 ]

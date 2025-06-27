@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 
 @dataclass
@@ -25,6 +25,10 @@ class SceneGenerationConfig:
     handle_dem_nans: bool = True
     dem_fillna_value: float = 0.0
     
+    enable_buffer: bool = False
+    buffer_size_km: Optional[float] = None
+    buffer_resolution_m: float = 100.0 
+    
     def to_dict(self) -> Dict:
         """Convert config to dictionary for serialization."""
         return {
@@ -40,5 +44,8 @@ class SceneGenerationConfig:
             'target_resolution_m': self.target_resolution_m,
             'generate_texture_preview': self.generate_texture_preview,
             'handle_dem_nans': self.handle_dem_nans,
-            'dem_fillna_value': self.dem_fillna_value
+            'dem_fillna_value': self.dem_fillna_value,
+            'enable_buffer': self.enable_buffer,
+            'buffer_size_km': self.buffer_size_km,
+            'buffer_resolution_m': self.buffer_resolution_m
         }

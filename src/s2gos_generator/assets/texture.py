@@ -8,7 +8,6 @@ import numpy as np
 import xarray as xr
 from PIL import Image
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 DEFAULT_MATERIALS = [
     {"name": "Tree cover", "esa_class": 10, "color_8bit": (40, 75, 30), "roughness": 0.6},
@@ -46,7 +45,7 @@ class TextureGenerator:
         landcover_data: xr.DataArray,
         output_path: Path,
         flip_vertical: bool = False,
-        default_material_index: int = 5
+        default_material_index: int = 7
     ) -> np.ndarray:
         """
         Converts land cover classification data to a material selection texture.
@@ -227,6 +226,59 @@ class TextureGenerator:
         logging.info(f"Land cover analysis: {analysis['unique_classes']} classes found")
         
         return selection_path, preview_path
+
+    def generate_mask_texture(
+        self,
+        mask_size: int,
+        target_size: int,
+        output_path: Path,
+        generate_background_mask: bool = True
+    ) -> Path:
+        """
+        Generates a square mask texture for buffer/background masking.
+        
+        Args:
+            mask_size: Total size of the mask in pixels (buffer area)
+            target_size: Size of the center hole in pixels (target area)
+            output_path: Path where the mask will be saved
+            generate_background_mask: If True, also generate inverted mask for background
+            
+        Returns:
+            Path to the generated mask file
+        """
+        logging.info(f"Generating mask texture {mask_size}x{mask_size} with {target_size}x{target_size} center hole")
+        
+        mask = np.ones((mask_size, mask_size), dtype=np.uint8) * 255
+        
+        center = mask_size // 2
+        half_target = target_size // 2
+        
+        start_y = center - half_target
+        end_y = center + half_target
+        start_x = center - half_target  
+        end_x = center + half_target
+        
+        mask[start_y:end_y, start_x:end_x] = 0
+        
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image = Image.fromarray(mask, mode='L')
+        image.save(output_path)
+        logging.info(f"Buffer mask texture saved to {output_path}")
+        
+        if generate_background_mask:
+            bg_mask_path = output_path.parent / f"background_{output_path.name}"
+            
+            bg_mask_3x3 = np.array([
+                [255, 255, 255],
+                [255,   0, 255], 
+                [255, 255, 255]
+            ], dtype=np.uint8)
+            
+            bg_image = Image.fromarray(bg_mask_3x3, mode='L')
+            bg_image.save(bg_mask_path)
+            logging.info(f"Background mask texture (3x3) saved to {bg_mask_path}")
+        
+        return output_path
 
 
 if __name__ == '__main__':

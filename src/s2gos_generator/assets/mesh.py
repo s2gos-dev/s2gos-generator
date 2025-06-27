@@ -8,7 +8,6 @@ import numpy as np
 import trimesh
 import xarray as xr
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class MeshGenerator:

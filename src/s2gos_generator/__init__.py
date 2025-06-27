@@ -1,20 +1,15 @@
 """S2GOS Scene Generator - Generate 3D scenes from earth observation data."""
 
+import logging
+
 __version__ = "0.1.0"
 
-# Lazy imports to avoid dependency issues when not needed
-def _import_core():
-    from .core import SceneGenerationConfig, SceneGenerationPipeline, SceneAssets
-    return SceneGenerationConfig, SceneGenerationPipeline, SceneAssets
+# Configure logging for the entire package
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def _import_scene():
-    from .scene import SceneDescription, MaterialDefinition
-    return SceneDescription, MaterialDefinition
-
-def _import_simulation():
-    from .simulation import SimulationConfig
-    from .scene_loading import create_s2gos_scene
-    return SimulationConfig, create_s2gos_scene
+# Import lightweight modules directly, defer heavy ones
+from .scene import SceneDescription, SceneConfig, SceneMetadata, create_s2gos_scene
+from .simulation import SimulationConfig
 
 
 def generate_scene(
@@ -31,7 +26,7 @@ def generate_scene(
 ):
     """Convenience function to generate a complete scene."""
     from pathlib import Path
-    SceneGenerationConfig, SceneGenerationPipeline, _ = _import_core()
+    from .core import SceneGenerationConfig, SceneGenerationPipeline
     
     config = SceneGenerationConfig(
         center_lat=center_lat,
@@ -50,15 +45,19 @@ def generate_scene(
     return pipeline.run_full_pipeline()
 
 
-# Make common classes available for direct import
+# Make core classes available with lazy loading
 def __getattr__(name):
-    """Lazy import for module attributes."""
     if name in ["SceneGenerationConfig", "SceneGenerationPipeline", "SceneAssets"]:
-        return getattr(__import__('s2gos_generator.core', fromlist=[name]), name)
-    elif name in ["SceneDescription", "MaterialDefinition"]:
-        return getattr(__import__('s2gos_generator.scene', fromlist=[name]), name)
-    elif name == "SimulationConfig":
-        return getattr(__import__('s2gos_generator.simulation', fromlist=[name]), name)
-    elif name == "create_s2gos_scene":
-        return getattr(__import__('s2gos_generator.scene_loading', fromlist=[name]), name)
+        from .core import SceneGenerationConfig, SceneGenerationPipeline, SceneAssets
+        return {"SceneGenerationConfig": SceneGenerationConfig, 
+                "SceneGenerationPipeline": SceneGenerationPipeline, 
+                "SceneAssets": SceneAssets}[name]
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+# Export all available classes
+__all__ = [
+    "SceneGenerationConfig", "SceneGenerationPipeline", "SceneAssets",
+    "SceneDescription", "SceneConfig", "SceneMetadata", "create_s2gos_scene",
+    "SimulationConfig", "generate_scene"
+]

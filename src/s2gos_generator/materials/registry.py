@@ -1,88 +1,133 @@
 """Material registry and S2GOS material catalog."""
 
 from typing import Dict
-from .definitions import Material, MaterialDefinition
+from .definitions import Material
 
 
 class MaterialRegistry:
-    """Registry of common S2GOS materials with automatic BRDF parameter mapping."""
+    """Registry of common S2GOS materials."""
     
     @staticmethod
     def create_s2gos_materials() -> Dict[str, Material]:
-        """Create standard S2GOS material set."""
+        """Create standard S2GOS material set.
+        
+        Returns:
+            Dictionary mapping material names to material instances
+        """
+        
+        def spectral_param(filename: str, variable: str) -> Dict[str, str]:
+            """Create spectral parameter specification.
+            
+            Args:
+                filename: Name of spectral data file
+                variable: Variable name within the file
+                
+            Returns:
+                Dictionary with path and variable keys
+            """
+            return {"path": filename, "variable": variable}
+        
         return {
-            # Vegetation materials - bilambertian with reflectance + transmittance
-            "treecover": Material("bilambertian", {
-                "reflectance": "spectrum_treecover_foliage_high.nc",
-                "transmittance": "spectrum_treecover_foliage_high.nc"
-            }),
-            "shrubland": Material("bilambertian", {
-                "reflectance": "spectrum_shrubland_foliage.nc", 
-                "transmittance": "spectrum_shrubland_foliage.nc"
-            }),
-            "cropland": Material("bilambertian", {
-                "reflectance": "spectrum_cropland_foliage_uniform.nc",
-                "transmittance": "spectrum_cropland_foliage_uniform.nc"
-            }),
-            "mangroves": Material("bilambertian", {
-                "reflectance": "spectrum_treecover_foliage_high.nc",
-                "transmittance": "spectrum_treecover_foliage_high.nc"
-            }),
+            "treecover": Material.from_dict({
+                "type": "bilambertian",
+                "reflectance": spectral_param("spectrum_treecover_foliage_high.nc", "reflectance"),
+                "transmittance": spectral_param("spectrum_treecover_foliage_high.nc", "transmittance")
+            }, id="treecover"),
             
-            # Surface materials - RPV for rough surfaces
-            "grassland": Material("rpv", {
-                "rho_0": "spectrum_grassland_rpv_high.nc",
-                "k": "spectrum_grassland_rpv_high.nc", 
-                "Theta": "spectrum_grassland_rpv_high.nc",
-                "rho_c": "spectrum_grassland_rpv_high.nc"
-            }),
-            "baresoil": Material("rpv", {
-                "rho_0": "spectrum_baresoil_low.nc",
-                "k": "spectrum_baresoil_low.nc",
-                "Theta": "spectrum_baresoil_low.nc", 
-                "rho_c": "spectrum_baresoil_low.nc"
-            }),
-            "wetland": Material("rpv", {  # Use grassland spectra
-                "rho_0": "spectrum_grassland_rpv_high.nc",
-                "k": "spectrum_grassland_rpv_high.nc",
-                "Theta": "spectrum_grassland_rpv_high.nc",
-                "rho_c": "spectrum_grassland_rpv_high.nc"
-            }),
+            "shrubland": Material.from_dict({
+                "type": "bilambertian",
+                "reflectance": spectral_param("spectrum_shrubland_foliage.nc", "reflectance"),
+                "transmittance": spectral_param("spectrum_shrubland_foliage.nc", "transmittance")
+            }, id="shrubland"),
             
-            # Simple materials - diffuse with reflectance only
-            "concrete": Material("diffuse", {"reflectance": "spectrum_concrete.nc"}),
-            "snow": Material("diffuse", {"reflectance": "spectrum_snow.nc"}),
-            "moss": Material("diffuse", {"reflectance": "spectrum_moss.nc"}),
+            "cropland": Material.from_dict({
+                "type": "bilambertian", 
+                "reflectance": spectral_param("spectrum_cropland_foliage_uniform.nc", "reflectance"),
+                "transmittance": spectral_param("spectrum_cropland_foliage_uniform.nc", "transmittance")
+            }, id="cropland"),
             
-            # Water - ocean model with runtime parameters
-            "water": Material("ocean_legacy", params={
-                "wavelength": 550.0, "chlorinity": 0.0, "pigmentation": 5.0,
-                "wind_speed": 2.0, "wind_direction": 90.0
-            })
+            "mangroves": Material.from_dict({
+                "type": "bilambertian",
+                "reflectance": spectral_param("spectrum_treecover_foliage_high.nc", "reflectance"),
+                "transmittance": spectral_param("spectrum_treecover_foliage_high.nc", "transmittance")
+            }, id="mangroves"),
+            
+            "grassland": Material.from_dict({
+                "type": "rpv",
+                "rho_0": spectral_param("spectrum_grassland_rpv_high.nc", "rho_0"),
+                "k": spectral_param("spectrum_grassland_rpv_high.nc", "k"),
+                "Theta": spectral_param("spectrum_grassland_rpv_high.nc", "Theta"),
+                "rho_c": spectral_param("spectrum_grassland_rpv_high.nc", "rho_c")
+            }, id="grassland"),
+            
+            "baresoil": Material.from_dict({
+                "type": "rpv",
+                "rho_0": spectral_param("spectrum_baresoil_low.nc", "rho_0"),
+                "k": spectral_param("spectrum_baresoil_low.nc", "k"), 
+                "Theta": spectral_param("spectrum_baresoil_low.nc", "Theta"),
+                "rho_c": spectral_param("spectrum_baresoil_low.nc", "rho_c")
+            }, id="baresoil"),
+            
+            "wetland": Material.from_dict({
+                "type": "rpv",
+                "rho_0": spectral_param("spectrum_grassland_rpv_high.nc", "rho_0"),
+                "k": spectral_param("spectrum_grassland_rpv_high.nc", "k"),
+                "Theta": spectral_param("spectrum_grassland_rpv_high.nc", "Theta"),
+                "rho_c": spectral_param("spectrum_grassland_rpv_high.nc", "rho_c")
+            }, id="wetland"),
+            
+            "concrete": Material.from_dict({
+                "type": "diffuse",
+                "reflectance": spectral_param("spectrum_concrete.nc", "reflectance")
+            }, id="concrete"),
+            
+            "snow": Material.from_dict({
+                "type": "diffuse", 
+                "reflectance": spectral_param("spectrum_snow.nc", "reflectance")
+            }, id="snow"),
+            
+            "moss": Material.from_dict({
+                "type": "diffuse",
+                "reflectance": spectral_param("spectrum_moss.nc", "reflectance")
+            }, id="moss"),
+            
+            "water": Material.from_dict({
+                "type": "ocean_legacy",
+                "chlorinity": 0.0,
+                "pigmentation": 5.0,
+                "wind_speed": 2.0,
+                "wind_direction": 90.0
+            }, id="water")
         }
+    
+    @staticmethod
+    def create_material_kdict_kpmap(materials: Dict[str, Material], mode: str = "mono") -> tuple[Dict, Dict]:
+        """Generate combined kernel dictionary and parameter map for all materials.
+        
+        Args:
+            materials: Dictionary of material instances
+            mode: Eradiate rendering mode ('mono' or 'rgb')
+            
+        Returns:
+            Tuple of (kernel_dict, parameter_map) for use in Eradiate scenes
+        """
+        kdict = {}
+        kpmap = {}
+        
+        for mat_name, material in materials.items():
+            mat_kdict = material.kdict(mode)
+            mat_kpmap = material.kpmap(mode)
+            
+            kdict.update(mat_kdict)
+            kpmap.update(mat_kpmap)
+        
+        return kdict, kpmap
 
 
 def create_s2gos_materials() -> Dict[str, Material]:
-    """Create standard S2GOS material set - convenience function."""
+    """Create standard S2GOS material set.
+    
+    Returns:
+        Dictionary mapping material names to material instances
+    """
     return MaterialRegistry.create_s2gos_materials()
-
-
-def create_default_materials() -> Dict[str, MaterialDefinition]:
-    """Create default material definitions for land cover classes."""
-    from ..assets.texture import DEFAULT_MATERIALS
-    
-    materials = {}
-    for mat in DEFAULT_MATERIALS:
-        name = mat["name"].lower().replace(" / ", "_").replace(" ", "_")
-        materials[name] = MaterialDefinition(
-            type="diffuse",
-            properties={
-                "reflectance": {
-                    "type": "rgb",
-                    "value": [c/255.0 for c in mat["color_8bit"]]
-                },
-                "roughness": mat["roughness"]
-            }
-        )
-    
-    return materials

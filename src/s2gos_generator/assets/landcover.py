@@ -8,7 +8,6 @@ import geopandas as gpd
 import xarray as xr
 from shapely.geometry import Polygon
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class LandCoverProcessor:
@@ -58,14 +57,15 @@ class LandCoverProcessor:
 
         logging.info("Merging tiles into a single dataset...")
         merged_ds = xr.merge(data_arrays, compat="no_conflicts")
+        
+        logging.info("Filling NaN values with water landcover class (7)")
+        merged_ds = merged_ds.fillna(7)
 
         return merged_ds
 
     def _clip_to_aoi(self, dataset: xr.Dataset, aoi_polygon: Polygon) -> xr.Dataset:
         """Clip the dataset to the exact AOI geometry."""
         try:
-            import rioxarray  # Extends xarray with rasterio functionality
-            
             logging.info("Clipping dataset to AOI geometry...")
             
             if not hasattr(dataset.rio, 'crs') or dataset.rio.crs is None:
@@ -194,9 +194,9 @@ if __name__ == '__main__':
         LANDCOVER_ROOT_DIR = Path('/home/gonzalezm/Data/')
         OUTPUT_DIR = Path('./output/landcover_assets')
         
-        TARGET_LAT = -23.6002  # Namibia, near Gobabeb
+        TARGET_LAT = -23.6002
         TARGET_LON = 15.1195
-        AOI_SIZE_KM = 10.0  # Smaller for land cover
+        AOI_SIZE_KM = 10.0
         
         OUTPUT_FILENAME = f"ESA_WorldCover_10m_Lat{TARGET_LAT}_Lon{TARGET_LON}_{AOI_SIZE_KM}km.nc"
         output_file_path = OUTPUT_DIR / OUTPUT_FILENAME
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         final_landcover = processor.generate_landcover(
             aoi_polygon=target_aoi,
             output_path=output_file_path,
-            target_resolution_m=30.0  # Resample to 30m to match DEM
+            target_resolution_m=30.0
         )
         
         print("\n--- Summary ---")

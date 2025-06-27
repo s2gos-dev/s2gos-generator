@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 import yaml
 import json
 
-from .materials import MaterialDefinition
+from ..materials import Material
 
 
 @dataclass
@@ -25,7 +25,7 @@ class SceneDescription:
     extent_km: float
     resolution_m: float
     
-    materials: Dict[str, MaterialDefinition] = field(default_factory=dict)
+    materials: Dict[str, Material] = field(default_factory=dict)
     geometry: Optional[SceneGeometry] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -58,10 +58,8 @@ class SceneDescription:
     
     def add_material(self, name: str, material_type: str, **properties):
         """Add a material definition."""
-        self.materials[name] = MaterialDefinition(
-            type=material_type,
-            properties=properties
-        )
+        material_dict = {"type": material_type, **properties}
+        self.materials[name] = Material.from_dict(material_dict, id=name)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -75,11 +73,7 @@ class SceneDescription:
         
         if self.materials:
             result["materials"] = {
-                name: {
-                    "type": mat.type,
-                    **mat.properties
-                }
-                for name, mat in self.materials.items()
+                name: mat.to_dict() for name, mat in self.materials.items()
             }
         
         if self.geometry:
@@ -167,10 +161,8 @@ def create_scene_from_test_output(output_dir: Path, scene_name: str) -> SceneDes
     # Add materials from existing data
     if "materials" in existing_data:
         for name, mat_data in existing_data["materials"].items():
-            scene.materials[name] = MaterialDefinition(
-                type=mat_data["type"],
-                properties={k: v for k, v in mat_data.items() if k != "type"}
-            )
+            material_dict = {"type": mat_data["type"], **{k: v for k, v in mat_data.items() if k != "type"}}
+            scene.materials[name] = Material.from_dict(material_dict, id=name)
     
     # Add geometry from existing data
     if "geometry" in existing_data:

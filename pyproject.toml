@@ -34,11 +34,16 @@ platforms = ["linux-64"]
 
 [tool.pixi.dependencies]
 python = ">=3.10,<3.12"
+jupyter = ">=1.1.1,<2"
+jupyterlab = ">=4.4.3,<5"
+ipykernel = ">=6.29.5,<7"
 
 [tool.pixi.pypi-dependencies]
 s2gos_generator = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+notebook = "jupyter notebook"
+lab = "jupyter lab"
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -49,6 +54,7 @@ docs = ["mkdocs"]
 default = { solve-group = "default" }
 dev = { features = ["dev", "test", "docs"], solve-group = "default" }
 test = { features = ["test"], solve-group = "default" }
+
 
 [tool.ruff]
 include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]

@@ -7,23 +7,21 @@ import yaml
 from datetime import datetime
 
 from ..materials import Material, MaterialRegistry
-from ..simulation.sensors import Sensor, PerspectiveSensor
 
 
 @dataclass
 class SceneMetadata:
-    """Scene generation metadata."""
+    """Scene generation metadata and reproducibility parameters."""
     center_lat: float
     center_lon: float
     aoi_size_km: float
     resolution_m: float
     generation_date: Optional[str] = None
-    
-    # Generation parameters (for reproducibility)
     dem_index_path: Optional[str] = None
     landcover_index_path: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
+        """Convert metadata to dictionary for serialization."""
         result = {
             "center_lat": self.center_lat,
             "center_lon": self.center_lon,
@@ -46,49 +44,40 @@ class SceneMetadata:
 
 @dataclass
 class SceneConfig:
-    """Complete scene configuration in dreams-scenes compatible format."""
+    """Scene configuration for multi-scale earth observation scenes."""
     
-    # Scene identification and metadata
     name: str
     metadata: SceneMetadata
-    
-    # Core definitions (matches Beijing.yml structure)
     landcover_ids: Dict[str, int]
     materials: Dict[str, Material]
-    target: Dict[str, Any]  # surface definition
-    
-    # Simulation parameters (optional)
+    target: Dict[str, Any]
+    buffer: Optional[Dict[str, Any]] = None
+    background: Optional[Dict[str, Any]] = None
     atmosphere: Optional[Dict[str, Any]] = None
-    illumination: Optional[Dict[str, Any]] = None
-    sensors: List[Sensor] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for YAML serialization."""
         result = {
-            # Scene metadata at top level
             "scene": {
                 "name": self.name,
                 **self.metadata.to_dict()
             },
-            
-            # Core definitions (dreams-scenes structure)
             "landcover_ids": self.landcover_ids,
             "materials": {k: v.to_dict() for k, v in self.materials.items()},
             "target": self.target
         }
         
-        # Add simulation parameters if present
+        if self.buffer:
+            result["buffer"] = self.buffer
+        if self.background:
+            result["background"] = self.background
         if self.atmosphere:
             result["atmosphere"] = self.atmosphere
-        if self.illumination:
-            result["illumination"] = self.illumination
-        if self.sensors:
-            result["measures"] = [s.to_dict() for s in self.sensors]
             
         return result
     
     def save_yaml(self, path: Path, include_comments: bool = True):
-        """Save to YAML with optional comments."""
+        """Save scene configuration to YAML file."""
         data = self.to_dict()
         
         with open(path, 'w') as f:
@@ -101,7 +90,7 @@ class SceneConfig:
     
     @classmethod
     def from_yaml(cls, path: Path) -> 'SceneConfig':
-        """Load from YAML file."""
+        """Load scene configuration from YAML file."""
         with open(path, 'r') as f:
             data = yaml.safe_load(f)
         
@@ -131,20 +120,12 @@ class SceneConfig:
                 else:
                     params[key] = value
             
-            materials[mat_id] = Material(mat_type, spectra, params)
-        
-        # Parse sensors
-        sensors = []
-        for sensor_data in data.get("measures", []):
-            if sensor_data["type"] == "perspective":
-                sensors.append(PerspectiveSensor(
-                    id=sensor_data.get("id", "perspective"),
-                    origin=sensor_data.get("origin", [0, 0, 36612.90342332]),
-                    target=sensor_data.get("target", [0, 0, 0]),
-                    fov=sensor_data.get("fov", 70),
-                    resolution=sensor_data.get("film_resolution", [1024, 768]),
-                    spp=sensor_data.get("spp", 128)
-                ))
+            mat_dict = {"type": mat_type}
+            mat_dict.update(params)
+            for key, filename in spectra.items():
+                mat_dict[key] = {"path": filename, "variable": key}
+            
+            materials[mat_id] = Material.from_dict(mat_dict, id=mat_id)
         
         return cls(
             name=scene_info["name"],
@@ -152,20 +133,21 @@ class SceneConfig:
             landcover_ids=data["landcover_ids"],
             materials=materials,
             target=data["target"],
-            atmosphere=data.get("atmosphere"),
-            illumination=data.get("illumination"),
-            sensors=sensors
+            buffer=data.get("buffer"),
+            background=data.get("background"),
+            atmosphere=data.get("atmosphere")
         )
 
 
 def create_s2gos_scene(
     scene_name: str, mesh_path: str, texture_path: str,
     center_lat: float, center_lon: float, aoi_size_km: float, resolution_m: float = 30.0,
-    sensor_height: float = 36612.90342332, **kwargs
+    buffer_mesh_path: str = None, buffer_texture_path: str = None, 
+    buffer_size_km: float = None, output_dir: Path = None, 
+    background_elevation: float = None, buffer_dem_file: str = None, **kwargs
 ) -> SceneConfig:
     """Create standard S2GOS scene configuration."""
     
-    # Scene metadata
     metadata = SceneMetadata(
         center_lat=center_lat,
         center_lon=center_lon,
@@ -176,7 +158,6 @@ def create_s2gos_scene(
         landcover_index_path=kwargs.get("landcover_index_path")
     )
     
-    # Standard S2GOS landcover mapping
     landcover_ids = {
         "tree_cover": 0, "shrubland": 1, "grassland": 2, "cropland": 3,
         "built_up": 4, "bare_sparse_vegetation": 5, "snow_and_ice": 6,
@@ -184,7 +165,6 @@ def create_s2gos_scene(
         "mangroves": 9, "moss_and_lichen": 10
     }
     
-    # Material assignment to landcover
     material_mapping = {
         "tree_cover": "treecover", "shrubland": "shrubland", 
         "grassland": "grassland", "cropland": "cropland",
@@ -194,30 +174,89 @@ def create_s2gos_scene(
         "moss_and_lichen": "moss"
     }
     
-    # Target surface definition
     target = {
         "mesh": mesh_path,
         "selection_texture": texture_path, 
         "materials": material_mapping
     }
     
-    # Default simulation parameters
-    atmosphere = kwargs.get("atmosphere", {
-        "boa": 0.0, "toa": 40000.0, "aerosol_ot": 0.1, 
-        "aerosol_scale": 1000.0, "aerosol_ds": "sixsv-continental"
-    })
+    # Add atmosphere configuration
+    atmosphere = {
+        "boa": kwargs.get("boa", 0.0),
+        "toa": kwargs.get("toa", 40000.0), 
+        "aerosol_ot": kwargs.get("aerosol_ot", 0.1),
+        "aerosol_scale": kwargs.get("aerosol_scale", 1000.0),
+        "aerosol_ds": kwargs.get("aerosol_ds", "sixsv-continental")
+    }
     
-    illumination = kwargs.get("illumination", {
-        "type": "directional", "zenith": 30.0, "azimuth": 180.0,
-        "irradiance": {"type": "solar_irradiance", "dataset": "thuillier_2003"}
-    })
-    
-    # Default perspective sensor
-    sensors = [PerspectiveSensor(
-        id="perspective_view",
-        origin=[0, 0, sensor_height],
-        spp=kwargs.get("spp", 512)
-    )]
+    buffer = None
+    background = None
+    if buffer_mesh_path and buffer_texture_path and buffer_size_km:
+        if output_dir is None:
+            output_dir = Path(".")
+        
+        buffer_resolution = int(buffer_size_km * 10)
+        target_resolution = int(aoi_size_km * 10)
+        
+        from ..assets.texture import TextureGenerator
+        texture_gen = TextureGenerator()
+        mask_path = output_dir / "textures" / f"mask_{scene_name}_{int(buffer_size_km)}km_buffer_{int(aoi_size_km)}km_target.bmp"
+        texture_gen.generate_mask_texture(
+            mask_size=buffer_resolution,
+            target_size=target_resolution, 
+            output_path=mask_path,
+            generate_background_mask=True
+        )
+        
+        background_mask_path = mask_path.parent / f"background_{mask_path.name}"
+        
+        buffer_material_mapping = {
+            "tree_cover": "treecover", "shrubland": "shrubland", 
+            "grassland": "grassland", "cropland": "cropland",
+            "built_up": "concrete", "bare_sparse_vegetation": "baresoil",
+            "snow_and_ice": "snow", "permanent_water_bodies": "water",
+            "herbaceous_wetland": "wetland", "mangroves": "mangroves",
+            "moss_and_lichen": "moss"
+        }
+        
+        buffer = {
+            "mesh": buffer_mesh_path,
+            "selection_texture": buffer_texture_path,
+            "shape_size": buffer_size_km * 1000.0,
+            "mask_edge_length": aoi_size_km * 1000.0,
+            "mask_texture": str(mask_path.relative_to(output_dir)),
+            "materials": buffer_material_mapping
+        }
+        
+        bg_elevation = 0.0
+        if background_elevation is not None:
+            bg_elevation = background_elevation
+        elif buffer_dem_file is not None:
+            try:
+                import xarray as xr
+                if output_dir:
+                    dem_path = output_dir / buffer_dem_file
+                else:
+                    dem_path = Path(buffer_dem_file)
+                
+                if dem_path.exists():
+                    dem_data = xr.open_dataset(dem_path)
+                    if 'elevation' in dem_data.data_vars:
+                        bg_elevation = float(dem_data['elevation'].mean().values)
+                    else:
+                        var_name = list(dem_data.data_vars.keys())[0]
+                        bg_elevation = float(dem_data[var_name].mean().values)
+            except Exception as e:
+                import logging
+                logging.warning(f"Could not calculate average elevation from {buffer_dem_file}: {e}")
+                bg_elevation = 0.0
+        
+        background = {
+            "material": "water",
+            "elevation": bg_elevation,
+            "mask_edge_length": buffer_size_km * 1000.0,
+            "mask_texture": str(background_mask_path.relative_to(output_dir))
+        }
     
     return SceneConfig(
         name=scene_name,
@@ -225,7 +264,7 @@ def create_s2gos_scene(
         landcover_ids=landcover_ids,
         materials=MaterialRegistry.create_s2gos_materials(),
         target=target,
-        atmosphere=atmosphere,
-        illumination=illumination,
-        sensors=sensors
+        buffer=buffer,
+        background=background,
+        atmosphere=atmosphere
     )

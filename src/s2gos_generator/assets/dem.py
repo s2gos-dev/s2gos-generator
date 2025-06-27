@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import geopandas as gpd
+import numpy as np
 import xarray as xr
 from pyproj import CRS, Transformer
 from shapely.geometry import Polygon
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def create_aoi_polygon(
     center_lat: float,
@@ -159,7 +159,6 @@ class DEMProcessor:
         tile_paths = self._find_intersecting_tiles(aoi_polygon)
         merged_dem = self._merge_tiles(tile_paths, fillna_value=fillna_value)
 
-        # If target resolution specified, regrid like the notebooks do
         if target_resolution_m is not None and center_lat is not None and center_lon is not None and aoi_size_km is not None:
             logging.info(f"Regridding DEM to {target_resolution_m}m resolution...")
             merged_dem = self._regrid_dem(merged_dem, target_resolution_m, center_lat, center_lon, fillna_value, aoi_size_km)
@@ -179,7 +178,7 @@ if __name__ == '__main__':
         DEM_ROOT_DIR = Path('/media/DATA/DEM/')
         OUTPUT_DIR = Path('./output/dem_assets')
         
-        TARGET_LAT = -23.6002  # Namibia, near Gobabeb
+        TARGET_LAT = -23.6002
         TARGET_LON = 15.1195
         AOI_SIZE_KM = 200.0
         

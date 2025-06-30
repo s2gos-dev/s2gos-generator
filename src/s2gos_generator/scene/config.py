@@ -150,7 +150,8 @@ class SceneConfig:
             target=data["target"],
             buffer=data.get("buffer"),
             background=data.get("background"),
-            atmosphere=data.get("atmosphere")
+            atmosphere=data.get("atmosphere"),
+            background_elevation=data.get("background_elevation")
         )
 
 
@@ -159,7 +160,8 @@ def create_s2gos_scene(
     center_lat: float, center_lon: float, aoi_size_km: float, resolution_m: float = 30.0,
     buffer_mesh_path: str = None, buffer_texture_path: str = None, 
     buffer_size_km: float = None, output_dir: Path = None, 
-    background_elevation: float = None, buffer_dem_file: str = None, **kwargs
+    background_elevation: float = None, background_material: str = "water", 
+    buffer_dem_file: str = None, **kwargs
 ) -> SceneConfig:
     """Create standard S2GOS scene configuration."""
     
@@ -267,7 +269,7 @@ def create_s2gos_scene(
                 bg_elevation = 0.0
         
         background = {
-            "material": "water",
+            "material": background_material,
             "elevation": bg_elevation,
             "mask_edge_length": buffer_size_km * 1000.0,
             "mask_texture": _serialize_path(background_mask_path.relative_to(output_dir))

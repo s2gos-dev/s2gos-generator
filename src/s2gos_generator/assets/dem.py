@@ -10,6 +10,8 @@ import xarray as xr
 from pyproj import CRS, Transformer
 from shapely.geometry import Polygon
 
+from .datautil import regrid_to_projection
+
 
 def create_aoi_polygon(
     center_lat: float,
@@ -99,6 +101,27 @@ class DEMProcessor:
             merged_ds = merged_ds.fillna(fillna_value)
 
         return merged_ds
+
+    def _regrid_dem(
+        self,
+        dem_ds: xr.Dataset,
+        target_resolution_m: float,
+        center_lat: float,
+        center_lon: float,
+        fillna_value: Optional[float],
+        aoi_size_km: float
+    ) -> xr.Dataset:
+        """Regrid DEM dataset to target resolution using oblique mercator projection."""
+        return regrid_to_projection(
+            dataset=dem_ds,
+            target_resolution_m=target_resolution_m,
+            center_lat=center_lat,
+            center_lon=center_lon,
+            aoi_size_km=aoi_size_km,
+            interpolation_method="linear",
+            fillna_value=fillna_value,
+            data_variable="elevation"
+        )
 
     def fillna_value(
         self, 

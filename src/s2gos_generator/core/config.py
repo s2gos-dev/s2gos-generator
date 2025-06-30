@@ -43,6 +43,9 @@ class SceneGenerationConfig:
     enable_buffer: bool = False
     buffer_size_km: Optional[float] = None
     buffer_resolution_m: float = 100.0 
+
+    background_elevation: Optional[float] = None
+    background_material: str = "water"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary for serialization."""
@@ -62,7 +65,9 @@ class SceneGenerationConfig:
             'dem_fillna_value': self.dem_fillna_value,
             'enable_buffer': self.enable_buffer,
             'buffer_size_km': self.buffer_size_km,
-            'buffer_resolution_m': self.buffer_resolution_m
+            'buffer_resolution_m': self.buffer_resolution_m,
+            'background_elevation': self.background_elevation,
+            'background_material': self.background_material
         }
     
     @classmethod
@@ -84,5 +89,7 @@ class SceneGenerationConfig:
             dem_fillna_value=data.get('dem_fillna_value', 0.0),
             enable_buffer=data.get('enable_buffer', False),
             buffer_size_km=data.get('buffer_size_km'),
-            buffer_resolution_m=data.get('buffer_resolution_m', 100.0)
+            buffer_resolution_m=data.get('buffer_resolution_m', 100.0),
+            background_elevation=data.get('background_elevation'),
+            background_material=data.get('background_material', 'water')
         )

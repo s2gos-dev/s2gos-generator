@@ -276,6 +276,8 @@ class SceneGenerationPipeline:
             buffer_size_km=buffer_size_km,
             output_dir=self.output_dir,
             buffer_dem_file=buffer_dem_file,
+            background_elevation=self.config.background_elevation,
+            background_material=self.config.background_material,
             dem_index_path=str(self.config.dem_index_path),
             landcover_index_path=str(self.config.landcover_index_path)
         )

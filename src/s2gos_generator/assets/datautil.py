@@ -1,11 +1,7 @@
-"""Data utilities for asset processing."""
-
-import importlib.resources
 from pathlib import Path
 from typing import Union, Optional
 
 import geopandas as gpd
-import pandas as pd
 import numpy as np
 import xarray as xr
 from pyproj import Proj
@@ -17,14 +13,6 @@ def read_feather_index(file_path: Union[str, Path]) -> gpd.GeoDataFrame:
     """Load a feather index file into a GeoDataFrame."""
     return gpd.read_feather(file_path)
 
-
-def read_dem_index() -> pd.DataFrame:
-    """Load the DEM index (vendored Apache Feather file) into a Pandas DataFrame."""
-    with importlib.resources.open_binary(
-        "dreams_assets.data", "dem_index.feather"
-    ) as f:
-        df = gpd.read_feather(f)
-    return df
 
 
 def validate_data_paths(dem_index_path: Path, landcover_index_path: Path, 

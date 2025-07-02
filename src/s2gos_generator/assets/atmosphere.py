@@ -1,10 +1,7 @@
-"""Atmospheric modeling utilities for realistic radiative transfer simulation."""
-
 import eradiate
 import joseki
 import numpy as np
 import xarray as xr
-from eradiate.scenes.atmosphere import ParticleLayer
 from eradiate.units import unit_registry as ureg
 
 

@@ -8,6 +8,8 @@ import geopandas as gpd
 import xarray as xr
 from shapely.geometry import Polygon
 
+from .datautil import regrid_to_projection
+
 
 
 class LandCoverProcessor:
@@ -108,8 +110,6 @@ class LandCoverProcessor:
         aoi_size_km: float
     ) -> xr.Dataset:
         """Regrid landcover to target resolution using oblique mercator projection."""
-        from .datautil import regrid_to_projection
-        
         return regrid_to_projection(
             dataset=landcover_ds,
             target_resolution_m=target_resolution_m,
@@ -160,47 +160,3 @@ ESA_LANDCOVER_CLASSES = {
     95: "Mangroves",
     100: "Moss and lichen"
 }
-
-
-if __name__ == '__main__':
-    from .dem import create_aoi_polygon
-    
-    try:
-        LANDCOVER_INDEX_PATH = Path('/home/gonzalezm/s2gos-generator/s2gos-generator/landcover_index.feather')
-        LANDCOVER_ROOT_DIR = Path('/home/gonzalezm/Data/')
-        OUTPUT_DIR = Path('./output/landcover_assets')
-        
-        TARGET_LAT = -23.6002
-        TARGET_LON = 15.1195
-        AOI_SIZE_KM = 10.0
-        
-        OUTPUT_FILENAME = f"ESA_WorldCover_10m_Lat{TARGET_LAT}_Lon{TARGET_LON}_{AOI_SIZE_KM}km.nc"
-        output_file_path = OUTPUT_DIR / OUTPUT_FILENAME
-
-        processor = LandCoverProcessor(
-            index_path=LANDCOVER_INDEX_PATH, 
-            landcover_root_dir=LANDCOVER_ROOT_DIR
-        )
-
-        target_aoi = create_aoi_polygon(
-            center_lat=TARGET_LAT,
-            center_lon=TARGET_LON,
-            side_length_km=AOI_SIZE_KM
-        )
-
-        final_landcover = processor.generate_landcover(
-            aoi_polygon=target_aoi,
-            output_path=output_file_path,
-            target_resolution_m=30.0
-        )
-        
-        print("\n--- Summary ---")
-        print(f"Successfully generated land cover and saved to:\n{output_file_path.resolve()}")
-        print("\nLand Cover Dataset Info:")
-        print(final_landcover)
-
-    except (FileNotFoundError, NotADirectoryError) as e:
-        logging.error(f"A configuration error occurred: {e}")
-        logging.error("Please check the paths in the CONFIGURATION section.")
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during processing: {e}")

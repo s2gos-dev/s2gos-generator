@@ -1,9 +1,8 @@
-"""Scene generation pipeline orchestrator."""
-
 import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
 import json
+import xarray as xr
 
 from .config import SceneGenerationConfig
 from .assets import SceneAssets
@@ -12,6 +11,7 @@ from ..assets.dem import DEMProcessor, create_aoi_polygon
 from ..assets.landcover import LandCoverProcessor
 from ..assets.mesh import MeshGenerator
 from ..assets.texture import TextureGenerator
+from ..scene import create_s2gos_scene
 
 
 
@@ -134,7 +134,6 @@ class SceneGenerationPipeline:
         if preview_texture_path:
             self.assets.preview_texture_file = preview_texture_path
         
-        import xarray as xr
         landcover_data = xr.open_dataarray(landcover_file_path)
         if isinstance(landcover_data, xr.Dataset):
             landcover_data = landcover_data[list(landcover_data.data_vars.keys())[0]]
@@ -247,8 +246,6 @@ class SceneGenerationPipeline:
 
     def _create_scene_config(self):
         """Create complete scene configuration from generated assets."""
-        from ..scene import create_s2gos_scene
-        
         buffer_mesh_path = None
         buffer_texture_path = None
         buffer_size_km = None

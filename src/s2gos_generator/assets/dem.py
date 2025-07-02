@@ -1,5 +1,3 @@
-"""DEM processing for area of interest using Copernicus GLO-30 DEM tiles."""
-
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -123,28 +121,6 @@ class DEMProcessor:
             data_variable="elevation"
         )
 
-    def fillna_value(
-        self, 
-        dem_ds: xr.Dataset, 
-        target_resolution_m: float, 
-        center_lat: float, 
-        center_lon: float,
-        fillna_value: float,
-        aoi_size_km: float
-    ) -> xr.Dataset:
-        """Regrid DEM to target resolution using oblique mercator projection."""
-        from .datautil import regrid_to_projection
-        
-        return regrid_to_projection(
-            dataset=dem_ds,
-            target_resolution_m=target_resolution_m,
-            center_lat=center_lat,
-            center_lon=center_lon,
-            aoi_size_km=aoi_size_km,
-            interpolation_method="linear",
-            fillna_value=fillna_value,
-            data_variable="elevation"
-        )
 
     def generate_dem(
         self,
@@ -171,56 +147,3 @@ class DEMProcessor:
         logging.info("DEM generation complete.")
         
         return merged_dem
-
-
-if __name__ == '__main__':
-    try:
-        DEM_INDEX_PATH = Path('/home/gonzalezm/dreams-scenes/packages/dreams_assets/src/dreams_assets/data/dem_index.feather')
-        DEM_ROOT_DIR = Path('/media/DATA/DEM/')
-        OUTPUT_DIR = Path('./output/dem_assets')
-        
-        TARGET_LAT = -23.6002
-        TARGET_LON = 15.1195
-        AOI_SIZE_KM = 200.0
-        
-        OUTPUT_FILENAME = f"Copernicus_DEM_GLO30_Lat{TARGET_LAT}_Lon{TARGET_LON}_{AOI_SIZE_KM}km.nc"
-        output_file_path = OUTPUT_DIR / OUTPUT_FILENAME
-
-        processor = DEMProcessor(index_path=DEM_INDEX_PATH, dem_root_dir=DEM_ROOT_DIR)
-
-        target_aoi = create_aoi_polygon(
-            center_lat=TARGET_LAT,
-            center_lon=TARGET_LON,
-            side_length_km=AOI_SIZE_KM
-        )
-
-        final_dem = processor.generate_dem(
-            aoi_polygon=target_aoi,
-            output_path=output_file_path,
-            fillna_value=0.0
-        )
-        
-        print("\n--- Summary ---")
-        print(f"Successfully generated DEM and saved to:\n{output_file_path.resolve()}")
-        print("\nDEM Dataset Info:")
-        print(final_dem)
-
-        try:
-            import matplotlib.pyplot as plt
-            
-            print("\nPlotting the generated DEM...")
-            fig, ax = plt.subplots(figsize=(10, 8), layout="constrained")
-            final_dem["elevation"].plot.imshow(ax=ax, cmap='terrain', center=None)
-            ax.set_title(f"Generated DEM for AOI around ({TARGET_LAT}, {TARGET_LON})")
-            ax.set_xlabel("Longitude")
-            ax.set_ylabel("Latitude")
-            plt.show()
-
-        except ImportError:
-            logging.warning("Matplotlib not installed. Skipping visualization.")
-
-    except (FileNotFoundError, NotADirectoryError) as e:
-        logging.error(f"A configuration error occurred: {e}")
-        logging.error("Please check the paths in the CONFIGURATION section.")
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during processing: {e}")

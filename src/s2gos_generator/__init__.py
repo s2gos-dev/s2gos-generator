@@ -1,19 +1,17 @@
-"""S2GOS Scene Generator - Generate 3D scenes from earth observation data."""
-
 import logging
+from pathlib import Path
+
+from .core import SceneGenerationConfig, SceneGenerationPipeline
+from .core.exceptions import (
+    S2GOSError, DataNotFoundError, ConfigurationError, ProcessingError,
+    RegridError, GeospatialError, MaterialError
+)
+from .scene import SceneDescription, SceneConfig, SceneMetadata, create_s2gos_scene
 
 __version__ = "0.1.0"
 
 # Configure logging for the entire package
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Import lightweight modules directly, defer heavy ones
-from .scene import SceneDescription, SceneConfig, SceneMetadata, create_s2gos_scene
-# SimulationConfig is now in s2gos-simulator package
-from .core.exceptions import (
-    S2GOSError, DataNotFoundError, ConfigurationError, ProcessingError,
-    RegridError, GeospatialError, MaterialError
-)
 
 
 def generate_scene(
@@ -29,8 +27,6 @@ def generate_scene(
     target_resolution_m: float = 30.0
 ):
     """Convenience function to generate a complete scene."""
-    from pathlib import Path
-    from .core import SceneGenerationConfig, SceneGenerationPipeline
     
     config = SceneGenerationConfig(
         center_lat=center_lat,
@@ -49,7 +45,6 @@ def generate_scene(
     return pipeline.run_full_pipeline()
 
 
-# Make core classes available with lazy loading
 def __getattr__(name):
     if name in ["SceneGenerationConfig", "SceneGenerationPipeline", "SceneAssets"]:
         from .core import SceneGenerationConfig, SceneGenerationPipeline, SceneAssets
@@ -59,7 +54,6 @@ def __getattr__(name):
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-# Export all available classes
 __all__ = [
     "SceneGenerationConfig", "SceneGenerationPipeline", "SceneAssets",
     "SceneDescription", "SceneConfig", "SceneMetadata", "create_s2gos_scene",

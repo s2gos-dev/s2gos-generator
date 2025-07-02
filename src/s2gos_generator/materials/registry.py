@@ -1,5 +1,3 @@
-"""Material registry and S2GOS material catalog."""
-
 from typing import Dict
 from .definitions import Material
 

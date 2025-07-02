@@ -1,5 +1,3 @@
-"""Texture map generation from land cover data for 3D rendering."""
-
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -279,35 +277,3 @@ class TextureGenerator:
             logging.info(f"Background mask texture (3x3) saved to {bg_mask_path}")
         
         return output_path
-
-
-if __name__ == '__main__':
-    try:
-        INPUT_LANDCOVER = Path("./landcover_gobabeb_30m.nc")
-        OUTPUT_DIR = Path("./data/textures")
-        BASE_NAME = "landcover_gobabeb_30m"
-        
-        generator = TextureGenerator()
-        
-        material_info = generator.get_material_info()
-        print(f"\nConfigured {material_info['num_materials']} materials:")
-        for i, mat in enumerate(material_info['materials']):
-            print(f"  {i}: {mat['name']} (ESA class {mat['esa_class']})")
-        
-        selection_path, preview_path = generator.generate_textures_from_file(
-            landcover_file_path=INPUT_LANDCOVER,
-            output_dir=OUTPUT_DIR,
-            base_name=BASE_NAME,
-            create_preview=True
-        )
-        
-        print(f"\n--- Texture Generation Complete ---")
-        print(f"Selection texture: {selection_path}")
-        if preview_path:
-            print(f"Preview texture: {preview_path}")
-            
-    except FileNotFoundError as e:
-        logging.error(f"File not found: {e}")
-        logging.error("Please check the input land cover file path.")
-    except Exception as e:
-        logging.error(f"An error occurred: {e}")

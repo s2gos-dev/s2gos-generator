@@ -1,6 +1,6 @@
 """Core scene generation pipeline."""
 
-from .config import SceneGenerationConfig
+from .config import SceneGenConfig
 from .pipeline import SceneGenerationPipeline  
 from .assets import SceneAssets
 from .exceptions import (
@@ -9,7 +9,7 @@ from .exceptions import (
 )
 
 __all__ = [
-    "SceneGenerationConfig", "SceneGenerationPipeline", "SceneAssets",
+    "SceneGenConfig", "SceneGenerationPipeline", "SceneAssets",
     "S2GOSError", "DataNotFoundError", "ConfigurationError", "ProcessingError",
     "RegridError", "GeospatialError", "MaterialError"
 ]

@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional, Union
 import json
 import xarray as xr
 
-from .config import SceneGenerationConfig, SceneConfig  # Both configs now in core.config
+from .config import SceneGenConfig
 from .assets import SceneAssets
 from .exceptions import ProcessingError, DataNotFoundError
 from ..assets.dem import DEMProcessor, create_aoi_polygon
@@ -14,29 +14,20 @@ from ..assets.texture import TextureGenerator
 from ..scene import create_s2gos_scene
 
 
-
-
 class SceneGenerationPipeline:
     """Main pipeline orchestrator for generating 3D scenes from earth observation data."""
 
-    def __init__(self, config: Union[SceneConfig, SceneGenerationConfig]):
-        """Initialize the pipeline with formal or legacy configuration."""
+    def __init__(self, config: SceneGenConfig):
+        """Initialize the pipeline with a configuration object."""
         self.config = config
         self.assets = SceneAssets()
         
-        if isinstance(config, SceneConfig):
-            dem_index_path = config.data_sources.dem_index_path
-            dem_root_dir = config.data_sources.dem_root_dir
-            landcover_index_path = config.data_sources.landcover_index_path
-            landcover_root_dir = config.data_sources.landcover_root_dir
-            scene_name = config.scene_name
-        else:
-            dem_index_path = config.dem_index_path
-            dem_root_dir = config.dem_root_dir
-            landcover_index_path = config.landcover_index_path
-            landcover_root_dir = config.landcover_root_dir
-            scene_name = config.scene_name
-        
+        dem_index_path = config.data_sources.dem_index_path
+        dem_root_dir = config.data_sources.dem_root_dir
+        landcover_index_path = config.data_sources.landcover_index_path
+        landcover_root_dir = config.data_sources.landcover_root_dir
+        scene_name = config.scene_name
+    
         self.dem_processor = DEMProcessor(
             index_path=dem_index_path,
             dem_root_dir=dem_root_dir
@@ -54,103 +45,74 @@ class SceneGenerationPipeline:
         
         logging.info(f"Pipeline initialized for scene '{scene_name}'")
 
-    def _get_config_value(self, formal_attr: str, legacy_attr: str):
-        """Get configuration value handling both formal and legacy config types."""
-        if isinstance(self.config, SceneConfig):
-            parts = formal_attr.split('.')
-            value = self.config
-            for part in parts:
-                value = getattr(value, part)
-            return value
-        else:
-            return getattr(self.config, legacy_attr)
-
     @property
     def scene_name(self) -> str:
-        """Get scene name from either configuration type."""
+        """Get scene name from the configuration."""
         return self.config.scene_name
 
     @property
     def center_lat(self) -> float:
-        """Get center latitude from either configuration type."""
-        return self._get_config_value('location.center_lat', 'center_lat')
+        """Get center latitude from the configuration."""
+        return self.config.location.center_lat
 
     @property
     def center_lon(self) -> float:
-        """Get center longitude from either configuration type."""
-        return self._get_config_value('location.center_lon', 'center_lon')
+        """Get center longitude from the configuration."""
+        return self.config.location.center_lon
 
     @property
     def aoi_size_km(self) -> float:
-        """Get AOI size from either configuration type."""
-        return self._get_config_value('location.aoi_size_km', 'aoi_size_km')
+        """Get AOI size from the configuration."""
+        return self.config.location.aoi_size_km
 
     @property
     def target_resolution_m(self) -> float:
-        """Get target resolution from either configuration type."""
-        return self._get_config_value('processing.target_resolution_m', 'target_resolution_m')
+        """Get target resolution from the configuration."""
+        return self.config.processing.target_resolution_m
 
     @property
     def generate_texture_preview(self) -> bool:
-        """Get texture preview setting from either configuration type."""
-        return self._get_config_value('processing.generate_texture_preview', 'generate_texture_preview')
+        """Get texture preview setting from the configuration."""
+        return self.config.processing.generate_texture_preview
 
     @property
     def handle_dem_nans(self) -> bool:
-        """Get DEM NaN handling setting from either configuration type."""
-        return self._get_config_value('processing.handle_dem_nans', 'handle_dem_nans')
+        """Get DEM NaN handling setting from the configuration."""
+        return self.config.processing.handle_dem_nans
 
     @property
     def dem_fillna_value(self) -> float:
-        """Get DEM fill value from either configuration type."""
-        return self._get_config_value('processing.dem_fillna_value', 'dem_fillna_value')
+        """Get DEM fill value from the configuration."""
+        return self.config.processing.dem_fillna_value
 
     @property
     def enable_buffer(self) -> bool:
-        """Get buffer enable setting from either configuration type."""
-        if isinstance(self.config, SceneConfig):
-            return self.config.has_buffer
-        else:
-            return self.config.enable_buffer
+        """Get buffer enable setting from the configuration."""
+        return self.config.has_buffer
 
     @property
     def buffer_size_km(self) -> Optional[float]:
-        """Get buffer size from either configuration type."""
-        if isinstance(self.config, SceneConfig):
-            return self.config.buffer.buffer_size_km if self.config.buffer else None
-        else:
-            return self.config.buffer_size_km
+        """Get buffer size from the configuration."""
+        return self.config.buffer.buffer_size_km if self.config.buffer else None
 
     @property
     def buffer_resolution_m(self) -> float:
-        """Get buffer resolution from either configuration type."""
-        if isinstance(self.config, SceneConfig):
-            return self.config.buffer.buffer_resolution_m if self.config.buffer else 100.0
-        else:
-            return getattr(self.config, 'buffer_resolution_m', 100.0)
+        """Get buffer resolution from the configuration."""
+        return self.config.buffer.buffer_resolution_m if self.config.buffer else 100.0
 
     @property
     def background_material(self) -> str:
-        """Get background material from either configuration type."""
-        if isinstance(self.config, SceneConfig):
-            return self.config.buffer.background_material.value if self.config.buffer else "water"
-        else:
-            return getattr(self.config, 'background_material', 'water')
+        """Get background material from the configuration."""
+        return self.config.buffer.background_material.value if self.config.buffer else "water"
 
     @property
     def background_elevation(self) -> float:
-        """Get background elevation from either configuration type."""
-        if isinstance(self.config, SceneConfig):
-            return self.config.buffer.background_elevation if self.config.buffer else 0.0
-        else:
-            return getattr(self.config, 'background_elevation', 0.0)
+        """Get background elevation from the configuration."""
+        return self.config.buffer.background_elevation if self.config.buffer else 0.0
 
     def _setup_output_directories(self) -> None:
         """Create the output directory structure."""
-        if isinstance(self.config, SceneConfig):
-            self.output_dir = self.config.scene_output_dir
-        else:
-            self.output_dir = self.config.output_dir / self.scene_name
+        self.output_dir = self.config.scene_output_dir
         self.data_dir = self.output_dir / "data"
         self.meshes_dir = self.output_dir / "meshes"
         self.textures_dir = self.output_dir / "textures"
@@ -366,14 +328,8 @@ class SceneGenerationPipeline:
         if self.enable_buffer and self.assets.buffer_dem_file:
             buffer_dem_file = str(self.assets.buffer_dem_file.relative_to(self.output_dir))
         
-  
-        # Get data source paths properly for both config types
-        if isinstance(self.config, SceneConfig):
-            dem_index_path = str(self.config.data_sources.dem_index_path)
-            landcover_index_path = str(self.config.data_sources.landcover_index_path)
-        else:
-            dem_index_path = str(self.config.dem_index_path)
-            landcover_index_path = str(self.config.landcover_index_path)
+        dem_index_path = str(self.config.data_sources.dem_index_path)
+        landcover_index_path = str(self.config.data_sources.landcover_index_path)
         
         return create_s2gos_scene(
             scene_name=self.scene_name,

@@ -92,6 +92,7 @@ class DataSources(BaseModel):
     dem_root_dir: Path = Field(..., description="Root directory for DEM data")
     landcover_index_path: Path = Field(..., description="Path to landcover index file")
     landcover_root_dir: Path = Field(..., description="Root directory for landcover data")
+    material_config_path: Path = Field(..., description="Path to custom material configuration JSON")
     
     @field_validator('dem_index_path', 'landcover_index_path')
     @classmethod
@@ -107,6 +108,14 @@ class DataSources(BaseModel):
         """Validate that root directories exist."""
         if not v.exists():
             raise ValueError(f"Root directory does not exist: {v}")
+        return v
+    
+    @field_validator('material_config_path')
+    @classmethod
+    def validate_material_config(cls, v):
+        """Validate that material config file exists if provided."""
+        if not v.exists():
+            raise ValueError(f"Material config file does not exist: {v}")
         return v
 
 
@@ -195,23 +204,6 @@ class BufferConfig(BaseModel):
         return self
 
 
-class MaterialMapping(BaseModel):
-    """Landcover to material mapping."""
-    tree_cover: str = Field("treecover", description="Tree cover material")
-    shrubland: str = Field("shrubland", description="Shrubland material")
-    grassland: str = Field("grassland", description="Grassland material")
-    cropland: str = Field("cropland", description="Cropland material")
-    built_up: str = Field("concrete", description="Built-up area material")
-    bare_sparse_vegetation: str = Field("baresoil", description="Bare soil material")
-    snow_and_ice: str = Field("snow", description="Snow and ice material")
-    permanent_water_bodies: str = Field("water", description="Water bodies material")
-    herbaceous_wetland: str = Field("wetland", description="Wetland material")
-    mangroves: str = Field("mangroves", description="Mangrove material")
-    moss_and_lichen: str = Field("moss", description="Moss and lichen material")
-    
-    def to_dict(self) -> Dict[str, str]:
-        """Convert to dictionary for scene output."""
-        return self.model_dump()
 
 
 class SceneGenConfig(BaseModel):
@@ -231,7 +223,6 @@ class SceneGenConfig(BaseModel):
     processing: ProcessingOptions = Field(default_factory=ProcessingOptions, description="Processing options")    
     atmosphere: AtmosphereConfig = Field(default_factory=AtmosphereConfig, description="Atmosphere configuration")
     buffer: Optional[BufferConfig] = Field(None, description="Buffer and background configuration")
-    material_mapping: MaterialMapping = Field(default_factory=MaterialMapping, description="Landcover to material mapping")
     created_at: datetime = Field(default_factory=datetime.now, description="Configuration creation time")
     
     model_config = {
@@ -471,6 +462,7 @@ def create_scene_config(
     dem_root_dir: Path,
     landcover_index_path: Path,
     landcover_root_dir: Path,
+    material_config_path: Path,
     output_dir: Path,
     target_resolution_m: float = 30.0,
     description: Optional[str] = None
@@ -489,7 +481,8 @@ def create_scene_config(
             dem_index_path=dem_index_path,
             dem_root_dir=dem_root_dir,
             landcover_index_path=landcover_index_path,
-            landcover_root_dir=landcover_root_dir
+            landcover_root_dir=landcover_root_dir,
+            material_config_path=material_config_path
         ),
         output_dir=output_dir,
         processing=ProcessingOptions(

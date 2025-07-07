@@ -332,6 +332,7 @@ class SceneGenerationPipeline:
         
         dem_index_path = str(self.config.data_sources.dem_index_path)
         landcover_index_path = str(self.config.data_sources.landcover_index_path)
+        material_config_path = self.config.data_sources.material_config_path
         
         return create_s2gos_scene(
             scene_name=self.scene_name,
@@ -349,7 +350,8 @@ class SceneGenerationPipeline:
             background_elevation=self.background_elevation,
             background_material=self.background_material,
             dem_index_path=dem_index_path,
-            landcover_index_path=landcover_index_path
+            landcover_index_path=landcover_index_path,
+            material_config_path=material_config_path
         )
 
     def run_full_pipeline(self):

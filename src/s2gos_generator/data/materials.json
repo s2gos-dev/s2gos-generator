@@ -1,0 +1,146 @@
+{
+  "materials": {
+    "treecover": {
+      "type": "bilambertian",
+      "reflectance": {
+        "path": "spectrum_treecover_foliage_high.nc",
+        "variable": "reflectance"
+      },
+      "transmittance": {
+        "path": "spectrum_treecover_foliage_high.nc",
+        "variable": "transmittance"
+      }
+    },
+    "shrubland": {
+      "type": "bilambertian",
+      "reflectance": {
+        "path": "spectrum_shrubland_foliage.nc",
+        "variable": "reflectance"
+      },
+      "transmittance": {
+        "path": "spectrum_shrubland_foliage.nc",
+        "variable": "transmittance"
+      }
+    },
+    "cropland": {
+      "type": "bilambertian",
+      "reflectance": {
+        "path": "spectrum_cropland_foliage_uniform.nc",
+        "variable": "reflectance"
+      },
+      "transmittance": {
+        "path": "spectrum_cropland_foliage_uniform.nc",
+        "variable": "transmittance"
+      }
+    },
+    "mangroves": {
+      "type": "bilambertian",
+      "reflectance": {
+        "path": "spectrum_treecover_foliage_high.nc",
+        "variable": "reflectance"
+      },
+      "transmittance": {
+        "path": "spectrum_treecover_foliage_high.nc",
+        "variable": "transmittance"
+      }
+    },
+    "grassland": {
+      "type": "rpv",
+      "rho_0": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "rho_0"
+      },
+      "k": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "k"
+      },
+      "Theta": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "Theta"
+      },
+      "rho_c": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "rho_c"
+      }
+    },
+    "baresoil": {
+      "type": "rpv",
+      "rho_0": {
+        "path": "spectrum_baresoil_low.nc",
+        "variable": "rho_0"
+      },
+      "k": {
+        "path": "spectrum_baresoil_low.nc",
+        "variable": "k"
+      },
+      "Theta": {
+        "path": "spectrum_baresoil_low.nc",
+        "variable": "Theta"
+      },
+      "rho_c": {
+        "path": "spectrum_baresoil_low.nc",
+        "variable": "rho_c"
+      }
+    },
+    "wetland": {
+      "type": "rpv",
+      "rho_0": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "rho_0"
+      },
+      "k": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "k"
+      },
+      "Theta": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "Theta"
+      },
+      "rho_c": {
+        "path": "spectrum_grassland_rpv_high.nc",
+        "variable": "rho_c"
+      }
+    },
+    "concrete": {
+      "type": "diffuse",
+      "reflectance": {
+        "path": "spectrum_concrete.nc",
+        "variable": "reflectance"
+      }
+    },
+    "snow": {
+      "type": "diffuse",
+      "reflectance": {
+        "path": "spectrum_snow.nc",
+        "variable": "reflectance"
+      }
+    },
+    "moss": {
+      "type": "diffuse",
+      "reflectance": {
+        "path": "spectrum_moss.nc",
+        "variable": "reflectance"
+      }
+    },
+    "water": {
+      "type": "ocean_legacy",
+      "chlorinity": 0.0,
+      "pigmentation": 5.0,
+      "wind_speed": 2.0,
+      "wind_direction": 90.0
+    }
+  },
+  "landcover_mapping": {
+    "tree_cover": "treecover",
+    "shrubland": "shrubland",
+    "grassland": "grassland",
+    "cropland": "cropland",
+    "built_up": "concrete",
+    "bare_sparse_vegetation": "baresoil",
+    "snow_and_ice": "snow",
+    "permanent_water_bodies": "water",
+    "herbaceous_wetland": "wetland",
+    "mangroves": "mangroves",
+    "moss_and_lichen": "moss"
+  }
+}

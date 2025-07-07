@@ -7,7 +7,7 @@ import yaml
 import os
 from datetime import datetime
 
-from ..materials import Material, MaterialRegistry
+from ..materials import Material, load_materials, get_landcover_mapping
 
 
 def _serialize_path(path: Union[Path, str, None]) -> Optional[str]:
@@ -161,9 +161,35 @@ def create_s2gos_scene(
     buffer_mesh_path: str = None, buffer_texture_path: str = None, 
     buffer_size_km: float = None, output_dir: Path = None, 
     background_elevation: float = None, background_material: str = "water", 
-    buffer_dem_file: str = None, **kwargs
+    buffer_dem_file: str = None, material_config_path: Path = None,
+    material_overrides: Dict[str, Dict[str, Any]] = None,
+    landcover_mapping_overrides: Dict[str, str] = None, **kwargs
 ) -> SceneConfig:
-    """Create standard S2GOS scene configuration."""
+    """Create standard S2GOS scene configuration.
+    
+    Args:
+        scene_name: Name of the scene
+        mesh_path: Path to the terrain mesh file
+        texture_path: Path to the selection texture file
+        center_lat: Center latitude of the scene
+        center_lon: Center longitude of the scene
+        aoi_size_km: Size of the area of interest in kilometers
+        resolution_m: Target resolution in meters
+        buffer_mesh_path: Optional path to buffer mesh file
+        buffer_texture_path: Optional path to buffer texture file
+        buffer_size_km: Optional buffer size in kilometers
+        output_dir: Output directory for the scene
+        background_elevation: Background elevation
+        background_material: Background material name
+        buffer_dem_file: Optional buffer DEM file path
+        material_config_path: Optional path to custom material configuration JSON
+        material_overrides: Optional dictionary of material property overrides
+        landcover_mapping_overrides: Optional dictionary of landcover-to-material mapping overrides
+        **kwargs: Additional configuration parameters
+        
+    Returns:
+        SceneConfig instance with loaded materials and configuration
+    """
     
     metadata = SceneMetadata(
         center_lat=center_lat,
@@ -175,6 +201,7 @@ def create_s2gos_scene(
         landcover_index_path=kwargs.get("landcover_index_path")
     )
     
+    # Load landcover IDs from configuration
     landcover_ids = {
         "tree_cover": 0, "shrubland": 1, "grassland": 2, "cropland": 3,
         "built_up": 4, "bare_sparse_vegetation": 5, "snow_and_ice": 6,
@@ -182,14 +209,12 @@ def create_s2gos_scene(
         "mangroves": 9, "moss_and_lichen": 10
     }
     
-    material_mapping = {
-        "tree_cover": "treecover", "shrubland": "shrubland", 
-        "grassland": "grassland", "cropland": "cropland",
-        "built_up": "concrete", "bare_sparse_vegetation": "baresoil",
-        "snow_and_ice": "snow", "permanent_water_bodies": "water",
-        "herbaceous_wetland": "wetland", "mangroves": "mangroves",
-        "moss_and_lichen": "moss"
-    }
+    # Load material mapping from JSON configuration
+    material_mapping = get_landcover_mapping(material_config_path)
+    
+    # Apply any landcover mapping overrides
+    if landcover_mapping_overrides:
+        material_mapping.update(landcover_mapping_overrides)
     
     target = {
         "mesh": mesh_path,
@@ -227,14 +252,8 @@ def create_s2gos_scene(
         
         background_mask_path = mask_path.parent / f"background_{mask_path.name}"
         
-        buffer_material_mapping = {
-            "tree_cover": "treecover", "shrubland": "shrubland", 
-            "grassland": "grassland", "cropland": "cropland",
-            "built_up": "concrete", "bare_sparse_vegetation": "baresoil",
-            "snow_and_ice": "snow", "permanent_water_bodies": "water",
-            "herbaceous_wetland": "wetland", "mangroves": "mangroves",
-            "moss_and_lichen": "moss"
-        }
+        # Use the same material mapping for buffer as target
+        buffer_material_mapping = material_mapping.copy()
         
         buffer = {
             "mesh": buffer_mesh_path,
@@ -275,11 +294,26 @@ def create_s2gos_scene(
             "mask_texture": _serialize_path(background_mask_path.relative_to(output_dir))
         }
     
+    # Load materials from JSON configuration
+    materials = load_materials(material_config_path)
+    
+    # Apply any material overrides
+    if material_overrides:
+        for material_id, overrides in material_overrides.items():
+            if material_id in materials:
+                # Update existing material with overrides
+                current_dict = materials[material_id].to_dict()
+                current_dict.update(overrides)
+                materials[material_id] = Material.from_dict(current_dict, id=material_id)
+            else:
+                # Create new material from overrides
+                materials[material_id] = Material.from_dict(overrides, id=material_id)
+    
     return SceneConfig(
         name=scene_name,
         metadata=metadata,
         landcover_ids=landcover_ids,
-        materials=MaterialRegistry.create_s2gos_materials(),
+        materials=materials,
         target=target,
         buffer=buffer,
         background=background,

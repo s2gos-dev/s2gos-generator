@@ -1,10 +1,11 @@
-"""Material definitions and registry for radiative transfer simulations."""
+"""Material definitions and JSON-based configuration loader for radiative transfer simulations."""
 
 from .definitions import Material
-from .registry import MaterialRegistry, create_s2gos_materials
+from .loader import MaterialConfigLoader, load_materials, get_landcover_mapping
 
 __all__ = [
     "Material",
-    "MaterialRegistry",
-    "create_s2gos_materials"
+    "MaterialConfigLoader",
+    "load_materials",
+    "get_landcover_mapping"
 ]

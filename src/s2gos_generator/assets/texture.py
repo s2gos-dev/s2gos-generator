@@ -204,7 +204,8 @@ class TextureGenerator:
         """
         logging.info(f"Loading land cover data from {landcover_file_path}")
         
-        landcover_data = xr.open_dataarray(landcover_file_path)
+        landcover_dataset = xr.open_zarr(landcover_file_path)
+        landcover_data = landcover_dataset['landcover']
         
         if isinstance(landcover_data, xr.Dataset):
             if 'landcover' in landcover_data.data_vars:

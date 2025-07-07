@@ -139,8 +139,7 @@ class LandCoverProcessor:
 
         logging.info(f"Saving processed land cover to '{output_path}'")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        encoding = {"landcover": {"zlib": True, "complevel": 5, "dtype": "uint8"}}
-        clipped_landcover.to_netcdf(output_path, encoding=encoding)
+        clipped_landcover.to_zarr(output_path, mode="w")
         logging.info("Land cover generation complete.")
         
         return clipped_landcover

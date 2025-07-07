@@ -133,7 +133,7 @@ class SceneGenerationPipeline:
         """Process DEM data for the AOI."""
         logging.info("=== Processing DEM Data ===")
         
-        dem_filename = f"dem_{self.scene_name}_{self.target_resolution_m}m.nc"
+        dem_filename = f"dem_{self.scene_name}_{self.target_resolution_m}m.zarr"
         dem_output_path = self.data_dir / dem_filename
         
         self.dem_processor.generate_dem(
@@ -154,7 +154,7 @@ class SceneGenerationPipeline:
         """Process land cover data for the AOI."""
         logging.info("=== Processing Land Cover Data ===")
         
-        landcover_filename = f"landcover_{self.scene_name}_{self.target_resolution_m}m.nc"
+        landcover_filename = f"landcover_{self.scene_name}_{self.target_resolution_m}m.zarr"
         landcover_output_path = self.data_dir / landcover_filename
         
         self.landcover_processor.generate_landcover(
@@ -203,7 +203,9 @@ class SceneGenerationPipeline:
         if preview_texture_path:
             self.assets.preview_texture_file = preview_texture_path
         
-        landcover_data = xr.open_dataarray(landcover_file_path)
+        # Load landcover data from Zarr format
+        landcover_dataset = xr.open_zarr(landcover_file_path)
+        landcover_data = landcover_dataset['landcover']
         if isinstance(landcover_data, xr.Dataset):
             landcover_data = landcover_data[list(landcover_data.data_vars.keys())[0]]
         
@@ -225,7 +227,7 @@ class SceneGenerationPipeline:
             side_length_km=self.buffer_size_km
         )
         
-        dem_filename = f"dem_buffer_{self.scene_name}_{self.buffer_resolution_m}m.nc"
+        dem_filename = f"dem_buffer_{self.scene_name}_{self.buffer_resolution_m}m.zarr"
         dem_output_path = self.data_dir / dem_filename
         
         self.dem_processor.generate_dem(
@@ -255,7 +257,7 @@ class SceneGenerationPipeline:
             side_length_km=self.buffer_size_km
         )
         
-        landcover_filename = f"landcover_buffer_{self.scene_name}_{self.buffer_resolution_m}m.nc"
+        landcover_filename = f"landcover_buffer_{self.scene_name}_{self.buffer_resolution_m}m.zarr"
         landcover_output_path = self.data_dir / landcover_filename
         
         self.landcover_processor.generate_landcover(

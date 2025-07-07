@@ -142,8 +142,7 @@ class DEMProcessor:
 
         logging.info(f"Saving merged DEM to '{output_path}'")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        encoding = {"elevation": {"zlib": True, "complevel": 5}}
-        merged_dem.to_netcdf(output_path, encoding=encoding)
+        merged_dem.to_zarr(output_path, mode="w")
         logging.info("DEM generation complete.")
         
         return merged_dem

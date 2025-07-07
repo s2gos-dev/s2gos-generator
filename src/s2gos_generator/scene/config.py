@@ -257,7 +257,7 @@ def create_s2gos_scene(
                     dem_path = Path(buffer_dem_file)
                 
                 if dem_path.exists():
-                    dem_data = xr.open_dataset(dem_path)
+                    dem_data = xr.open_zarr(dem_path)
                     if 'elevation' in dem_data.data_vars:
                         bg_elevation = float(dem_data['elevation'].mean().values)
                     else:

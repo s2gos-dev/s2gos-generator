@@ -142,7 +142,8 @@ class MeshGenerator:
         """
         logging.info(f"Loading DEM from {dem_file_path}")
         
-        dem_data = xr.open_dataarray(dem_file_path)
+        dem_dataset = xr.open_zarr(dem_file_path)
+        dem_data = dem_dataset['elevation']
         
         if isinstance(dem_data, xr.Dataset):
             if 'elevation' in dem_data.data_vars:

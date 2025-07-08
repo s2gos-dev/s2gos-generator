@@ -155,6 +155,99 @@ class SceneConfig:
         )
 
 
+def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
+    """Convert rich AtmosphereConfig to scene description dictionary format.
+    
+    Args:
+        atmosphere_config: AtmosphereConfig object from scene generation configuration
+        
+    Returns:
+        Dictionary format suitable for scene description
+    """
+    from ..core.config import AtmosphereType
+    
+    base_dict = {
+        "boa": atmosphere_config.boa,
+        "toa": atmosphere_config.toa,
+        "type": atmosphere_config.type.value
+    }
+    
+    if atmosphere_config.type == AtmosphereType.MOLECULAR:
+        # Use molecular atmosphere configuration
+        mol_config = atmosphere_config.molecular
+        base_dict["molecular_atmosphere"] = {
+            "thermoprops_identifier": mol_config.thermoprops.identifier,
+            "altitude_min": mol_config.thermoprops.altitude_min,
+            "altitude_max": mol_config.thermoprops.altitude_max,
+            "altitude_step": mol_config.thermoprops.altitude_step,
+            "constituent_scaling": mol_config.thermoprops.constituent_scaling,
+            "absorption_database": mol_config.absorption_database.value if mol_config.absorption_database else None,
+            "has_absorption": mol_config.has_absorption,
+            "has_scattering": mol_config.has_scattering
+        }
+    
+    elif atmosphere_config.type == AtmosphereType.HOMOGENEOUS:
+        # Use homogeneous atmosphere configuration
+        homogeneous_config = atmosphere_config.homogeneous
+        base_dict.update({
+            "aerosol_ot": homogeneous_config.optical_thickness,
+            "aerosol_scale": homogeneous_config.scale_height,
+            "aerosol_ds": homogeneous_config.aerosol_dataset.value,
+            "reference_wavelength": homogeneous_config.reference_wavelength,
+            "has_absorption": homogeneous_config.has_absorption
+        })
+    
+    elif atmosphere_config.type == AtmosphereType.HETEROGENEOUS:
+        # Use heterogeneous atmosphere configuration
+        heterogeneous_config = atmosphere_config.heterogeneous
+        base_dict.update({
+            "has_molecular_atmosphere": heterogeneous_config.molecular is not None,
+            "has_particle_layers": heterogeneous_config.particle_layers is not None and len(heterogeneous_config.particle_layers) > 0
+        })
+        
+        # Store molecular atmosphere info
+        if heterogeneous_config.molecular:
+            mol_config = heterogeneous_config.molecular
+            base_dict["molecular_atmosphere"] = {
+                "thermoprops_identifier": mol_config.thermoprops.identifier,
+                "altitude_min": mol_config.thermoprops.altitude_min,
+                "altitude_max": mol_config.thermoprops.altitude_max,
+                "altitude_step": mol_config.thermoprops.altitude_step,
+                "constituent_scaling": mol_config.thermoprops.constituent_scaling,
+                "absorption_database": mol_config.absorption_database.value if mol_config.absorption_database else None,
+                "has_absorption": mol_config.has_absorption,
+                "has_scattering": mol_config.has_scattering
+            }
+        
+        # Store particle layers info
+        if heterogeneous_config.particle_layers:
+            base_dict["particle_layers"] = []
+            for layer in heterogeneous_config.particle_layers:
+                layer_dict = {
+                    "aerosol_dataset": layer.aerosol_dataset.value,
+                    "optical_thickness": layer.optical_thickness,
+                    "altitude_bottom": layer.altitude_bottom,
+                    "altitude_top": layer.altitude_top,
+                    "distribution_type": layer.distribution.type,
+                    "reference_wavelength": layer.reference_wavelength,
+                    "has_absorption": layer.has_absorption
+                }
+                
+                # Add distribution-specific parameters
+                if layer.distribution.type == "exponential":
+                    layer_dict["scale_height"] = layer.distribution.scale_height
+                elif layer.distribution.type == "gaussian":
+                    layer_dict["center_altitude"] = layer.distribution.center_altitude
+                    layer_dict["width"] = layer.distribution.width
+                
+                base_dict["particle_layers"].append(layer_dict)
+    
+    else:
+        raise ValueError(f"Unknown atmosphere type: {atmosphere_config.type.value}")
+    
+    return base_dict
+
+
 def create_s2gos_scene(
     scene_name: str, mesh_path: str, texture_path: str,
     center_lat: float, center_lon: float, aoi_size_km: float, resolution_m: float = 30.0,
@@ -222,14 +315,9 @@ def create_s2gos_scene(
         "materials": material_mapping
     }
     
-    # Add atmosphere configuration
-    atmosphere = {
-        "boa": kwargs.get("boa", 0.0),
-        "toa": kwargs.get("toa", 40000.0), 
-        "aerosol_ot": kwargs.get("aerosol_ot", 0.1),
-        "aerosol_scale": kwargs.get("aerosol_scale", 1000.0),
-        "aerosol_ds": kwargs.get("aerosol_ds", "sixsv-continental")
-    }
+    # Convert atmosphere configuration to scene description format
+    atmosphere_config = kwargs.get("atmosphere_config")
+    atmosphere = _convert_atmosphere_config_to_dict(atmosphere_config)
     
     buffer = None
     background = None

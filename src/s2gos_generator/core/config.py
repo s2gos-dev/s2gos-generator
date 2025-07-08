@@ -71,12 +71,11 @@ class AbsorptionDatabase(str, Enum):
     HITRAN_2020 = "hitran-2020"
     
 
-class AtmosphereMode(str, Enum):
-    """Atmosphere configuration modes."""
-    PRESET = "preset"  # Use predefined atmosphere configurations
-    DATASET = "dataset"  # Use specific Eradiate datasets
-    CUSTOM = "custom"  # Custom molecular/particle layers
-    RAW = "raw"  # Raw Eradiate configuration passthrough
+class AtmosphereType(str, Enum):
+    """Atmosphere types aligned with Eradiate's atmosphere classes."""
+    MOLECULAR = "molecular"  # MolecularAtmosphere - clear sky, gaseous only
+    HOMOGENEOUS = "homogeneous"  # HomogeneousAtmosphere - uniform optical properties
+    HETEROGENEOUS = "heterogeneous"  # HeterogeneousAtmosphere - molecular + particle layers
 
 
 class SceneLocation(BaseModel):
@@ -127,61 +126,165 @@ class ProcessingOptions(BaseModel):
     dem_fillna_value: float = Field(0.0, description="Fill value for DEM NaN values")
 
 
-class MolecularLayer(BaseModel):
-    """Custom molecular atmosphere layer."""
-    species: str = Field(..., description="Molecular species (e.g., H2O, CO2, O3)")
-    concentration: float = Field(..., ge=0.0, description="Concentration value")
-    concentration_unit: str = Field("ppm", description="Concentration unit")
-    altitude_range: tuple[float, float] = Field(..., description="(bottom, top) altitude in meters")
+class ThermophysicalConfig(BaseModel):
+    """Configuration for atmospheric thermophysical properties using joseki."""
+    identifier: str = Field("afgl_1986-us_standard", description="Standard atmosphere identifier")
+    altitude_min: float = Field(0.0, ge=0.0, description="Minimum altitude in meters")
+    altitude_max: float = Field(120000.0, gt=0.0, description="Maximum altitude in meters")
+    altitude_step: float = Field(1000.0, gt=0.0, description="Altitude step in meters")
+    constituent_scaling: Optional[dict[str, float]] = Field(None, description="Constituent concentration scaling (e.g., {'CO2': 400.0})")
+    
+    @model_validator(mode='after')
+    def validate_altitude_range(self):
+        """Validate altitude configuration."""
+        if self.altitude_max <= self.altitude_min:
+            raise ValueError("Maximum altitude must be greater than minimum altitude")
+        return self
+
+
+class MolecularAtmosphereConfig(BaseModel):
+    """Configuration for molecular atmosphere using Eradiate's MolecularAtmosphere."""
+    thermoprops: ThermophysicalConfig = Field(default_factory=ThermophysicalConfig, description="Thermophysical properties configuration")
+    absorption_database: Optional[AbsorptionDatabase] = Field(None, description="Absorption database to use")
+    has_absorption: bool = Field(True, description="Enable absorption calculations")
+    has_scattering: bool = Field(True, description="Enable scattering calculations")
+
+
+class HomogeneousAtmosphereConfig(BaseModel):
+    """Configuration for homogeneous atmosphere with uniform optical properties."""
+    aerosol_dataset: AerosolDataset = Field(AerosolDataset.SIXSV_CONTINENTAL, description="Aerosol dataset to use")
+    optical_thickness: float = Field(0.1, ge=0.0, le=5.0, description="Aerosol optical thickness")
+    scale_height: float = Field(1000.0, gt=0.0, description="Aerosol scale height in meters")
+    reference_wavelength: float = Field(550.0, gt=0.0, description="Reference wavelength in nm")
+    has_absorption: bool = Field(True, description="Enable absorption by aerosols")
+
+
+class HeterogeneousAtmosphereConfig(BaseModel):
+    """Configuration for heterogeneous atmosphere with molecular background and particle layers."""
+    molecular: Optional[MolecularAtmosphereConfig] = Field(None, description="Molecular atmosphere configuration")
+    particle_layers: Optional[list[ParticleLayerConfig]] = Field(None, description="Particle layer configurations")
+    
+    @model_validator(mode='after')
+    def validate_heterogeneous_config(self):
+        """Validate that at least one component is configured."""
+        if not self.molecular and not self.particle_layers:
+            raise ValueError("Heterogeneous atmosphere requires at least molecular atmosphere or particle layers")
+        return self
+
+
+class ParticleDistribution(BaseModel):
+    """Base class for particle distribution configurations."""
+    type: str = Field(..., description="Distribution type")
+
+
+class ExponentialDistribution(ParticleDistribution):
+    """Exponential particle distribution."""
+    type: Literal["exponential"] = "exponential"
+    scale_height: float = Field(1000.0, gt=0.0, description="Scale height in meters")
+
+
+class GaussianDistribution(ParticleDistribution):
+    """Gaussian particle distribution."""
+    type: Literal["gaussian"] = "gaussian"
+    center_altitude: float = Field(..., description="Center altitude in meters")
+    width: float = Field(..., gt=0.0, description="Distribution width in meters")
+
+
+class UniformDistribution(ParticleDistribution):
+    """Uniform particle distribution."""
+    type: Literal["uniform"] = "uniform"
+
+
+DistributionType = Union[ExponentialDistribution, GaussianDistribution, UniformDistribution]
     
 
-class ParticleLayer(BaseModel):
-    """Custom particle atmosphere layer."""
+class ParticleLayerConfig(BaseModel):
+    """Enhanced particle layer configuration."""
     aerosol_dataset: AerosolDataset = Field(..., description="Aerosol dataset to use")
     optical_thickness: float = Field(..., ge=0.0, description="Aerosol optical thickness")
-    scale_height: float = Field(1000.0, gt=0.0, description="Scale height in meters")
-    altitude_range: tuple[float, float] = Field(..., description="(bottom, top) altitude in meters")
+    altitude_bottom: float = Field(..., ge=0.0, description="Bottom altitude in meters")
+    altitude_top: float = Field(..., gt=0.0, description="Top altitude in meters")
+    distribution: DistributionType = Field(..., description="Particle distribution configuration")
+    reference_wavelength: float = Field(550.0, gt=0.0, description="Reference wavelength in nm")
+    has_absorption: bool = Field(True, description="Enable absorption by particles")
+    
+    @model_validator(mode='after')
+    def validate_altitude_range(self):
+        """Validate altitude configuration."""
+        if self.altitude_top <= self.altitude_bottom:
+            raise ValueError("Top altitude must be greater than bottom altitude")
+        return self
+
+
+AtmosphereTypeConfig = Union[MolecularAtmosphereConfig, HomogeneousAtmosphereConfig, HeterogeneousAtmosphereConfig]
 
 
 class AtmosphereConfig(BaseModel):
-    """Comprehensive atmosphere configuration supporting multiple modes."""
-    mode: AtmosphereMode = Field(AtmosphereMode.PRESET, description="Atmosphere configuration mode")
+    """Comprehensive atmosphere configuration supporting multiple types."""
+    type: AtmosphereType = Field(AtmosphereType.HOMOGENEOUS, description="Atmosphere type")
     
     boa: float = Field(0.0, ge=0.0, description="Bottom of atmosphere altitude in meters")
     toa: float = Field(40000.0, gt=0.0, description="Top of atmosphere altitude in meters")
     
-    aerosol_ot: Optional[float] = Field(0.1, ge=0.0, le=5.0, description="Aerosol optical thickness")
-    aerosol_scale: Optional[float] = Field(1000.0, gt=0.0, description="Aerosol scale height in meters")
-    aerosol_ds: Optional[AerosolDataset] = Field(AerosolDataset.SIXSV_CONTINENTAL, description="Aerosol dataset")
+    # Type-specific configurations
+    molecular: Optional[MolecularAtmosphereConfig] = Field(None, description="Molecular atmosphere configuration")
+    homogeneous: Optional[HomogeneousAtmosphereConfig] = Field(None, description="Homogeneous atmosphere configuration")
+    heterogeneous: Optional[HeterogeneousAtmosphereConfig] = Field(None, description="Heterogeneous atmosphere configuration")
     
-    absorption_db: Optional[AbsorptionDatabase] = Field(None, description="Absorption database")
-    aerosol_dataset: Optional[AerosolDataset] = Field(None, description="Specific aerosol dataset")
-    
-    molecular_layers: Optional[list[MolecularLayer]] = Field(None, description="Custom molecular layers")
-    particle_layers: Optional[list[ParticleLayer]] = Field(None, description="Custom particle layers")
-    
-    raw_config: Optional[dict[str, Any]] = Field(None, description="Raw Eradiate atmosphere configuration")
     
     @model_validator(mode='after')
     def validate_atmosphere_config(self):
-        """Validate atmosphere configuration based on mode."""
+        """Validate atmosphere configuration based on type."""
         if self.toa <= self.boa:
             raise ValueError("Top of atmosphere must be higher than bottom of atmosphere")
         
-        if self.mode == AtmosphereMode.PRESET:
-            if self.aerosol_ot is None or self.aerosol_ds is None:
-                raise ValueError("Preset mode requires aerosol_ot and aerosol_ds")
-        elif self.mode == AtmosphereMode.DATASET:
-            if self.aerosol_dataset is None and self.absorption_db is None:
-                raise ValueError("Dataset mode requires aerosol_dataset or absorption_db")
-        elif self.mode == AtmosphereMode.CUSTOM:
-            if not self.molecular_layers and not self.particle_layers:
-                raise ValueError("Custom mode requires molecular_layers or particle_layers")
-        elif self.mode == AtmosphereMode.RAW:
-            if self.raw_config is None:
-                raise ValueError("Raw mode requires raw_config")
+        # Validate type-specific configurations
+        if self.type == AtmosphereType.MOLECULAR:
+            if not self.molecular:
+                raise ValueError("Molecular atmosphere type requires 'molecular' configuration")
+        elif self.type == AtmosphereType.HOMOGENEOUS:
+            if not self.homogeneous:
+                raise ValueError("Homogeneous atmosphere type requires 'homogeneous' configuration")
+        elif self.type == AtmosphereType.HETEROGENEOUS:
+            if not self.heterogeneous:
+                raise ValueError("Heterogeneous atmosphere type requires 'heterogeneous' configuration")
         
         return self
+    
+    def get_config_for_type(self) -> AtmosphereTypeConfig:
+        """Get the appropriate configuration object for the current atmosphere type."""
+        if self.type == AtmosphereType.MOLECULAR:
+            if self.molecular:
+                return self.molecular
+            else:
+                raise ValueError("No molecular configuration available")
+        elif self.type == AtmosphereType.HOMOGENEOUS:
+            if self.homogeneous:
+                return self.homogeneous
+            else:
+                raise ValueError("No homogeneous configuration available")
+        elif self.type == AtmosphereType.HETEROGENEOUS:
+            if self.heterogeneous:
+                return self.heterogeneous
+            else:
+                raise ValueError("No heterogeneous configuration available")
+        else:
+            raise ValueError(f"Unknown atmosphere type: {self.type}")
+
+
+def _default_atmosphere_config() -> 'AtmosphereConfig':
+    """Create a default atmosphere configuration matching eradiate defaults."""
+    return AtmosphereConfig(
+        type=AtmosphereType.MOLECULAR,
+        molecular=MolecularAtmosphereConfig(
+            thermoprops=ThermophysicalConfig(
+                identifier="afgl_1986-us_standard"
+            ),
+            absorption_database=None,  # No absorption by default
+            has_absorption=False,      # Match eradiate sigma_a=0.0 default
+            has_scattering=True        # Air scattering like eradiate sigma_s default
+        )
+    )
 
 
 class BufferConfig(BaseModel):
@@ -210,8 +313,7 @@ class SceneGenConfig(BaseModel):
     """
     Comprehensive scene configuration using Pydantic.
     
-    This replaces the legacy SceneGenerationConfig with a modern,
-    validated, and flexible configuration system.
+    Provides a modern, validated, and flexible configuration system for scene generation.
     """
     
     scene_name: str = Field(..., min_length=1, description="Scene name (used for output files)")
@@ -221,7 +323,7 @@ class SceneGenConfig(BaseModel):
     data_sources: DataSources = Field(..., description="Data source configuration")
     output_dir: Path = Field(..., description="Output directory for generated scene")
     processing: ProcessingOptions = Field(default_factory=ProcessingOptions, description="Processing options")    
-    atmosphere: AtmosphereConfig = Field(default_factory=AtmosphereConfig, description="Atmosphere configuration")
+    atmosphere: AtmosphereConfig = Field(default_factory=_default_atmosphere_config, description="Atmosphere configuration")
     buffer: Optional[BufferConfig] = Field(None, description="Buffer and background configuration")
     created_at: datetime = Field(default_factory=datetime.now, description="Configuration creation time")
     
@@ -251,85 +353,6 @@ class SceneGenConfig(BaseModel):
         
         return self
     
-    @property
-    def center_lat(self) -> float:
-        """Legacy compatibility: center latitude."""
-        return self.location.center_lat
-    
-    @property
-    def center_lon(self) -> float:
-        """Legacy compatibility: center longitude."""
-        return self.location.center_lon
-    
-    @property
-    def aoi_size_km(self) -> float:
-        """Legacy compatibility: AOI size."""
-        return self.location.aoi_size_km
-    
-    @property
-    def dem_index_path(self) -> Path:
-        """Legacy compatibility: DEM index path."""
-        return self.data_sources.dem_index_path
-    
-    @property
-    def dem_root_dir(self) -> Path:
-        """Legacy compatibility: DEM root directory."""
-        return self.data_sources.dem_root_dir
-    
-    @property
-    def landcover_index_path(self) -> Path:
-        """Legacy compatibility: landcover index path."""
-        return self.data_sources.landcover_index_path
-    
-    @property
-    def landcover_root_dir(self) -> Path:
-        """Legacy compatibility: landcover root directory."""
-        return self.data_sources.landcover_root_dir
-    
-    @property
-    def target_resolution_m(self) -> float:
-        """Legacy compatibility: target resolution."""
-        return self.processing.target_resolution_m
-    
-    @property
-    def generate_texture_preview(self) -> bool:
-        """Legacy compatibility: generate texture preview."""
-        return self.processing.generate_texture_preview
-    
-    @property
-    def handle_dem_nans(self) -> bool:
-        """Legacy compatibility: handle DEM NaNs."""
-        return self.processing.handle_dem_nans
-    
-    @property
-    def dem_fillna_value(self) -> float:
-        """Legacy compatibility: DEM fill value."""
-        return self.processing.dem_fillna_value
-    
-    @property
-    def enable_buffer(self) -> bool:
-        """Legacy compatibility: enable buffer."""
-        return self.buffer is not None and self.buffer.enabled
-    
-    @property
-    def buffer_size_km(self) -> Optional[float]:
-        """Legacy compatibility: buffer size."""
-        return self.buffer.buffer_size_km if self.buffer and self.buffer.enabled else None
-    
-    @property
-    def buffer_resolution_m(self) -> float:
-        """Legacy compatibility: buffer resolution."""
-        return self.buffer.buffer_resolution_m if self.buffer else 100.0
-    
-    @property
-    def background_elevation(self) -> Optional[float]:
-        """Legacy compatibility: background elevation."""
-        return self.buffer.background_elevation if self.buffer and self.buffer.enabled else None
-    
-    @property
-    def background_material(self) -> str:
-        """Legacy compatibility: background material."""
-        return self.buffer.background_material.value if self.buffer and self.buffer.enabled else "water"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -366,48 +389,44 @@ class SceneGenConfig(BaseModel):
         """Disable buffer/background system."""
         self.buffer = None
     
-    def set_atmosphere_preset(self, aerosol_ot: float = 0.1, aerosol_scale: float = 1000.0,
-                            aerosol_ds: AerosolDataset = AerosolDataset.SIXSV_CONTINENTAL):
-        """Set atmosphere using preset configuration."""
-        self.atmosphere = AtmosphereConfig(
-            mode=AtmosphereMode.PRESET,
-            boa=self.atmosphere.boa,
-            toa=self.atmosphere.toa,
-            aerosol_ot=aerosol_ot,
-            aerosol_scale=aerosol_scale,
-            aerosol_ds=aerosol_ds
-        )
-    
-    def set_atmosphere_dataset(self, aerosol_dataset: Optional[AerosolDataset] = None,
-                             absorption_db: Optional[AbsorptionDatabase] = None):
-        """Set atmosphere using specific datasets."""
-        self.atmosphere = AtmosphereConfig(
-            mode=AtmosphereMode.DATASET,
-            boa=self.atmosphere.boa,
-            toa=self.atmosphere.toa,
+    def set_atmosphere_homogeneous(self, aerosol_dataset: AerosolDataset = AerosolDataset.SIXSV_CONTINENTAL,
+                                  optical_thickness: float = 0.1, scale_height: float = 1000.0):
+        """Set atmosphere using homogeneous configuration."""
+        homogeneous_config = HomogeneousAtmosphereConfig(
             aerosol_dataset=aerosol_dataset,
-            absorption_db=absorption_db
+            optical_thickness=optical_thickness,
+            scale_height=scale_height
         )
-    
-    def set_atmosphere_custom(self, molecular_layers: Optional[list[MolecularLayer]] = None,
-                            particle_layers: Optional[list[ParticleLayer]] = None):
-        """Set atmosphere using custom layers."""
         self.atmosphere = AtmosphereConfig(
-            mode=AtmosphereMode.CUSTOM,
+            type=AtmosphereType.HOMOGENEOUS,
             boa=self.atmosphere.boa,
             toa=self.atmosphere.toa,
-            molecular_layers=molecular_layers,
+            homogeneous=homogeneous_config
+        )
+    
+    def set_atmosphere_molecular(self, molecular_config: MolecularAtmosphereConfig):
+        """Set atmosphere using molecular configuration."""
+        self.atmosphere = AtmosphereConfig(
+            type=AtmosphereType.MOLECULAR,
+            boa=self.atmosphere.boa,
+            toa=self.atmosphere.toa,
+            molecular=molecular_config
+        )
+    
+    def set_atmosphere_heterogeneous(self, molecular_config: Optional[MolecularAtmosphereConfig] = None,
+                                   particle_layers: Optional[list[ParticleLayerConfig]] = None):
+        """Set atmosphere using heterogeneous configuration with molecular and particle layers."""
+        heterogeneous_config = HeterogeneousAtmosphereConfig(
+            molecular=molecular_config,
             particle_layers=particle_layers
         )
-    
-    def set_atmosphere_raw(self, raw_config: dict[str, Any]):
-        """Set atmosphere using raw Eradiate configuration."""
         self.atmosphere = AtmosphereConfig(
-            mode=AtmosphereMode.RAW,
+            type=AtmosphereType.HETEROGENEOUS,
             boa=self.atmosphere.boa,
             toa=self.atmosphere.toa,
-            raw_config=raw_config
+            heterogeneous=heterogeneous_config
         )
+    
     
     def validate_configuration(self) -> list[str]:
         """Validate the complete configuration and return any errors."""
@@ -493,35 +512,144 @@ def create_scene_config(
 
 def create_clear_atmosphere() -> AtmosphereConfig:
     """Create atmosphere configuration for clear conditions."""
+    homogeneous_config = HomogeneousAtmosphereConfig(
+        aerosol_dataset=AerosolDataset.SIXSV_CONTINENTAL,
+        optical_thickness=0.05,  # Low aerosol
+        scale_height=1000.0
+    )
     return AtmosphereConfig(
-        mode=AtmosphereMode.PRESET,
+        type=AtmosphereType.HOMOGENEOUS,
         boa=0.0,
         toa=40000.0,
-        aerosol_ot=0.05,  # Low aerosol
-        aerosol_scale=1000.0,
-        aerosol_ds=AerosolDataset.SIXSV_CONTINENTAL
+        homogeneous=homogeneous_config
     )
 
 
 def create_hazy_atmosphere() -> AtmosphereConfig:
     """Create atmosphere configuration for hazy conditions."""
+    homogeneous_config = HomogeneousAtmosphereConfig(
+        aerosol_dataset=AerosolDataset.SIXSV_CONTINENTAL,
+        optical_thickness=0.3,  # High aerosol
+        scale_height=1000.0
+    )
     return AtmosphereConfig(
-        mode=AtmosphereMode.PRESET,
+        type=AtmosphereType.HOMOGENEOUS,
         boa=0.0,
         toa=40000.0,
-        aerosol_ot=0.3,
-        aerosol_scale=1000.0,
-        aerosol_ds=AerosolDataset.SIXSV_CONTINENTAL
+        homogeneous=homogeneous_config
     )
 
 
 def create_maritime_atmosphere() -> AtmosphereConfig:
     """Create atmosphere configuration for maritime conditions."""
+    homogeneous_config = HomogeneousAtmosphereConfig(
+        aerosol_dataset=AerosolDataset.SIXSV_MARITIME,
+        optical_thickness=0.15,
+        scale_height=1000.0
+    )
     return AtmosphereConfig(
-        mode=AtmosphereMode.PRESET,
+        type=AtmosphereType.HOMOGENEOUS,
         boa=0.0,
         toa=40000.0,
-        aerosol_ot=0.15,
-        aerosol_scale=1000.0,
-        aerosol_ds=AerosolDataset.SIXSV_MARITIME
+        homogeneous=homogeneous_config
+    )
+
+
+def create_molecular_atmosphere_config(
+    identifier: str = "afgl_1986-us_standard",
+    altitude_max: float = 120000.0,
+    absorption_database: Optional[AbsorptionDatabase] = None,
+    co2_concentration: Optional[float] = None
+) -> AtmosphereConfig:
+    """Create molecular atmosphere configuration.
+    
+    Args:
+        identifier: Standard atmosphere identifier
+        altitude_max: Maximum altitude in meters
+        absorption_database: Absorption database to use
+        co2_concentration: CO2 concentration in ppm (if different from standard)
+    
+    Returns:
+        AtmosphereConfig for molecular atmosphere
+    """
+    thermoprops = ThermophysicalConfig(
+        identifier=identifier,
+        altitude_max=altitude_max,
+        constituent_scaling={"CO2": co2_concentration} if co2_concentration else None
+    )
+    
+    molecular_config = MolecularAtmosphereConfig(
+        thermoprops=thermoprops,
+        absorption_database=absorption_database
+    )
+    
+    return AtmosphereConfig(
+        type=AtmosphereType.MOLECULAR,
+        boa=0.0,
+        toa=altitude_max,
+        molecular=molecular_config
+    )
+
+
+def create_custom_particle_layer(
+    aerosol_dataset: AerosolDataset,
+    optical_thickness: float,
+    altitude_bottom: float = 0.0,
+    altitude_top: float = 10000.0,
+    distribution_type: str = "exponential",
+    scale_height: float = 1000.0
+) -> ParticleLayerConfig:
+    """Create a custom particle layer configuration.
+    
+    Args:
+        aerosol_dataset: Aerosol dataset to use
+        optical_thickness: Aerosol optical thickness
+        altitude_bottom: Bottom altitude in meters
+        altitude_top: Top altitude in meters
+        distribution_type: Distribution type ("exponential", "uniform")
+        scale_height: Scale height for exponential distribution
+    
+    Returns:
+        ParticleLayerConfig
+    """
+    if distribution_type == "exponential":
+        distribution = ExponentialDistribution(scale_height=scale_height)
+    elif distribution_type == "uniform":
+        distribution = UniformDistribution()
+    else:
+        raise ValueError(f"Unsupported distribution type: {distribution_type}")
+    
+    return ParticleLayerConfig(
+        aerosol_dataset=aerosol_dataset,
+        optical_thickness=optical_thickness,
+        altitude_bottom=altitude_bottom,
+        altitude_top=altitude_top,
+        distribution=distribution
+    )
+
+
+def create_heterogeneous_atmosphere_config(
+    molecular_config: Optional[MolecularAtmosphereConfig] = None,
+    particle_layers: Optional[list[ParticleLayerConfig]] = None,
+    toa: float = 40000.0
+) -> AtmosphereConfig:
+    """Create heterogeneous atmosphere configuration.
+    
+    Args:
+        molecular_config: Molecular atmosphere configuration
+        particle_layers: List of particle layer configurations
+        toa: Top of atmosphere altitude
+    
+    Returns:
+        AtmosphereConfig for heterogeneous atmosphere
+    """
+    heterogeneous_config = HeterogeneousAtmosphereConfig(
+        molecular=molecular_config,
+        particle_layers=particle_layers
+    )
+    return AtmosphereConfig(
+        type=AtmosphereType.HETEROGENEOUS,
+        boa=0.0,
+        toa=toa,
+        heterogeneous=heterogeneous_config
     )

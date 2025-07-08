@@ -110,6 +110,11 @@ class SceneGenerationPipeline:
         """Get background elevation from the configuration."""
         return self.config.buffer.background_elevation if self.config.buffer else 0.0
 
+    @property
+    def atmosphere_config(self):
+        """Get atmosphere configuration from the configuration."""
+        return self.config.atmosphere
+
     def _setup_output_directories(self) -> None:
         """Create the output directory structure."""
         self.output_dir = self.config.scene_output_dir
@@ -351,7 +356,8 @@ class SceneGenerationPipeline:
             background_material=self.background_material,
             dem_index_path=dem_index_path,
             landcover_index_path=landcover_index_path,
-            material_config_path=material_config_path
+            material_config_path=material_config_path,
+            atmosphere_config=self.atmosphere_config
         )
 
     def run_full_pipeline(self):

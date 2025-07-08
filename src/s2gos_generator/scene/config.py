@@ -253,10 +253,10 @@ def create_s2gos_scene(
     center_lat: float, center_lon: float, aoi_size_km: float, resolution_m: float = 30.0,
     buffer_mesh_path: str = None, buffer_texture_path: str = None, 
     buffer_size_km: float = None, output_dir: Path = None, 
-    background_elevation: float = None, background_material: str = "water", 
-    buffer_dem_file: str = None, material_config_path: Path = None,
-    material_overrides: Dict[str, Dict[str, Any]] = None,
-    landcover_mapping_overrides: Dict[str, str] = None, **kwargs
+    background_elevation: float = None, buffer_dem_file: str = None, 
+    material_config_path: Path = None, material_overrides: Dict[str, Dict[str, Any]] = None,
+    landcover_mapping_overrides: Dict[str, str] = None, 
+    background_selection_texture: str = None, background_size_km: float = None, **kwargs
 ) -> SceneConfig:
     """Create standard S2GOS scene configuration.
     
@@ -273,11 +273,12 @@ def create_s2gos_scene(
         buffer_size_km: Optional buffer size in kilometers
         output_dir: Output directory for the scene
         background_elevation: Background elevation
-        background_material: Background material name
         buffer_dem_file: Optional buffer DEM file path
         material_config_path: Optional path to custom material configuration JSON
         material_overrides: Optional dictionary of material property overrides
         landcover_mapping_overrides: Optional dictionary of landcover-to-material mapping overrides
+        background_selection_texture: Optional path to background selection texture file
+        background_size_km: Optional background size in kilometers
         **kwargs: Additional configuration parameters
         
     Returns:
@@ -375,12 +376,15 @@ def create_s2gos_scene(
                 logging.warning(f"Could not calculate average elevation from {buffer_dem_file}: {e}")
                 bg_elevation = 0.0
         
-        background = {
-            "material": background_material,
-            "elevation": bg_elevation,
-            "mask_edge_length": buffer_size_km * 1000.0,
-            "mask_texture": _serialize_path(background_mask_path.relative_to(output_dir))
-        }
+        # Use new landcover-based background system
+        if background_selection_texture and background_size_km:
+            background = {
+                "selection_texture": background_selection_texture,
+                "elevation": bg_elevation,
+                "size_km": background_size_km
+            }
+        else:
+            background = None
     
     # Load materials from JSON configuration
     materials = load_materials(material_config_path)

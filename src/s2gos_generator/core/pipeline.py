@@ -278,6 +278,57 @@ class SceneGenerationPipeline:
         logging.info(f"Buffer land cover processing complete: {landcover_output_path}")
         return landcover_output_path
 
+    def process_background_landcover(self) -> Optional[Path]:
+        """Process land cover data for background area (mirrors buffer system)."""
+        if not self.enable_buffer or not hasattr(self.config.buffer, 'background_size_km'):
+            return None
+            
+        logging.info("=== Processing Background Land Cover Data ===")
+        
+        # Create background AOI polygon
+        background_aoi = create_aoi_polygon(
+            center_lat=self.center_lat,
+            center_lon=self.center_lon,
+            side_length_km=self.config.buffer.background_size_km
+        )
+        
+        landcover_filename = f"landcover_background_{self.scene_name}_{self.config.buffer.background_resolution_m}m.zarr"
+        landcover_output_path = self.data_dir / landcover_filename
+        
+        self.landcover_processor.generate_landcover(
+            aoi_polygon=background_aoi,
+            output_path=landcover_output_path,
+            target_resolution_m=self.config.buffer.background_resolution_m,
+            center_lat=self.center_lat,
+            center_lon=self.center_lon,
+            aoi_size_km=self.config.buffer.background_size_km
+        )
+        
+        self.assets.background_landcover_file = landcover_output_path
+        logging.info(f"Background land cover processing complete: {landcover_output_path}")
+        return landcover_output_path
+
+    def generate_background_textures(self, background_landcover_file_path: Path) -> Optional[Tuple[Path, Path]]:
+        """Generate texture maps for background area (mirrors buffer system)."""
+        if not background_landcover_file_path:
+            return None, None
+            
+        logging.info("=== Generating Background Textures ===")
+        
+        selection_texture_path, preview_texture_path = self.texture_generator.generate_textures_from_file(
+            landcover_file_path=background_landcover_file_path,
+            output_dir=self.textures_dir,
+            base_name=f"{self.scene_name}_background_{self.config.buffer.background_resolution_m}m",
+            create_preview=self.generate_texture_preview
+        )
+        
+        self.assets.background_selection_texture_file = selection_texture_path
+        if preview_texture_path:
+            self.assets.background_preview_texture_file = preview_texture_path
+        
+        logging.info(f"Background texture generation complete")
+        return selection_texture_path, preview_texture_path
+
     def generate_buffer_mesh(self, buffer_dem_file_path: Path) -> Optional[Path]:
         """Generate 3D mesh for buffer area."""
         if not buffer_dem_file_path:
@@ -339,6 +390,12 @@ class SceneGenerationPipeline:
         landcover_index_path = str(self.config.data_sources.landcover_index_path)
         material_config_path = self.config.data_sources.material_config_path
         
+        background_selection_texture = None
+        background_size_km = None
+        if self.enable_buffer and self.assets.background_selection_texture_file and hasattr(self.config.buffer, 'background_size_km'):
+            background_selection_texture = str(self.assets.background_selection_texture_file.relative_to(self.output_dir))
+            background_size_km = self.config.buffer.background_size_km
+        
         return create_s2gos_scene(
             scene_name=self.scene_name,
             mesh_path=str(self.assets.mesh_file.relative_to(self.output_dir)),
@@ -353,7 +410,8 @@ class SceneGenerationPipeline:
             output_dir=self.output_dir,
             buffer_dem_file=buffer_dem_file,
             background_elevation=self.background_elevation,
-            background_material=self.background_material,
+            background_selection_texture=background_selection_texture,
+            background_size_km=background_size_km,
             dem_index_path=dem_index_path,
             landcover_index_path=landcover_index_path,
             material_config_path=material_config_path,
@@ -377,6 +435,10 @@ class SceneGenerationPipeline:
             buffer_texture_selection = None
             buffer_texture_preview = None
             
+            background_landcover_file = None
+            background_texture_selection = None
+            background_texture_preview = None
+            
             if self.enable_buffer:
                 buffer_dem_file = self.process_buffer_dem()
                 buffer_landcover_file = self.process_buffer_landcover()
@@ -384,6 +446,10 @@ class SceneGenerationPipeline:
                     buffer_mesh_file = self.generate_buffer_mesh(buffer_dem_file)
                 if buffer_landcover_file:
                     buffer_texture_selection, buffer_texture_preview = self.generate_buffer_textures(buffer_landcover_file)
+                
+                background_landcover_file = self.process_background_landcover()
+                if background_landcover_file:
+                    background_texture_selection, background_texture_preview = self.generate_background_textures(background_landcover_file)
             
             scene_config = self._create_scene_config()
             scene_config_file = self.output_dir / f"{self.scene_name}.yml"

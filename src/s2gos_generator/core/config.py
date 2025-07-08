@@ -294,6 +294,8 @@ class BufferConfig(BaseModel):
     buffer_resolution_m: float = Field(100.0, gt=0.0, description="Buffer resolution in meters")
     background_material: BackgroundMaterial = Field(BackgroundMaterial.WATER, description="Background material")
     background_elevation: float = Field(0.0, description="Background elevation in meters")
+    background_size_km: float = Field(100.0, gt=0.0, description="Background area size in kilometers")
+    background_resolution_m: float = Field(200.0, gt=0.0, description="Background resolution in meters")
     
     @model_validator(mode='after')
     def validate_buffer_config(self):
@@ -303,6 +305,12 @@ class BufferConfig(BaseModel):
         
         if self.buffer_size_km <= 0:
             raise ValueError("Buffer size must be positive when buffer is enabled")
+        
+        if self.background_size_km <= 0:
+            raise ValueError("Background size must be positive when buffer is enabled")
+        
+        if self.background_resolution_m < self.buffer_resolution_m:
+            raise ValueError("Background resolution must be equal to or lower than buffer resolution")
         
         return self
 
@@ -375,14 +383,17 @@ class SceneGenConfig(BaseModel):
     
     def enable_buffer_system(self, buffer_size_km: float, buffer_resolution_m: float = 100.0,
                            background_material: BackgroundMaterial = BackgroundMaterial.WATER,
-                           background_elevation: float = 0.0):
+                           background_elevation: float = 0.0, background_size_km: float = 100.0,
+                           background_resolution_m: float = 200.0):
         """Enable and configure buffer/background system."""
         self.buffer = BufferConfig(
             enabled=True,
             buffer_size_km=buffer_size_km,
             buffer_resolution_m=buffer_resolution_m,
             background_material=background_material,
-            background_elevation=background_elevation
+            background_elevation=background_elevation,
+            background_size_km=background_size_km,
+            background_resolution_m=background_resolution_m
         )
     
     def disable_buffer_system(self):

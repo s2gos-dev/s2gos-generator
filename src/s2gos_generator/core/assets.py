@@ -22,6 +22,10 @@ class SceneAssets:
     buffer_selection_texture_file: Optional[Path] = None
     buffer_preview_texture_file: Optional[Path] = None
     
+    background_landcover_file: Optional[Path] = None
+    background_selection_texture_file: Optional[Path] = None
+    background_preview_texture_file: Optional[Path] = None
+    
     def to_dict(self) -> Dict:
         """Convert assets to dictionary."""
         return {
@@ -36,5 +40,8 @@ class SceneAssets:
             'buffer_landcover_file': str(self.buffer_landcover_file) if self.buffer_landcover_file else None,
             'buffer_mesh_file': str(self.buffer_mesh_file) if self.buffer_mesh_file else None,
             'buffer_selection_texture_file': str(self.buffer_selection_texture_file) if self.buffer_selection_texture_file else None,
-            'buffer_preview_texture_file': str(self.buffer_preview_texture_file) if self.buffer_preview_texture_file else None
+            'buffer_preview_texture_file': str(self.buffer_preview_texture_file) if self.buffer_preview_texture_file else None,
+            'background_landcover_file': str(self.background_landcover_file) if self.background_landcover_file else None,
+            'background_selection_texture_file': str(self.background_selection_texture_file) if self.background_selection_texture_file else None,
+            'background_preview_texture_file': str(self.background_preview_texture_file) if self.background_preview_texture_file else None
         }

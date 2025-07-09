@@ -1,5 +1,3 @@
-"""Scene description and materials."""
-
 from .description import SceneDescription, SceneGeometry
 from .config import SceneConfig, SceneMetadata, create_s2gos_scene
 

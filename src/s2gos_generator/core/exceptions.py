@@ -1,6 +1,3 @@
-"""Exception hierarchy for S2GOS scene generator."""
-
-
 class S2GOSError(Exception):
     """Base exception for all S2GOS-related errors."""
     pass

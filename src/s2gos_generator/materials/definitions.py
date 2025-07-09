@@ -1,5 +1,3 @@
-"""Material definition classes for radiative transfer simulations."""
-
 import attrs
 from typing import Dict, Any, Callable, ClassVar
 from pathlib import Path

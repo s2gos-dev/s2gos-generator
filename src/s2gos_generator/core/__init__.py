@@ -1,5 +1,3 @@
-"""Core scene generation pipeline."""
-
 from .config import SceneGenConfig
 from .pipeline import SceneGenerationPipeline  
 from .assets import SceneAssets

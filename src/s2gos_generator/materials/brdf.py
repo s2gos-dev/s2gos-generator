@@ -1,5 +1,3 @@
-"""BRDF-specific utilities and models."""
-
 from typing import Dict, Any
 
 

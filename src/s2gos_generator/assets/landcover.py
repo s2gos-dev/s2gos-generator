@@ -1,5 +1,3 @@
-"""ESA WorldCover land cover data processing for area of interest."""
-
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple, Union

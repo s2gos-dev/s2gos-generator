@@ -1,5 +1,3 @@
-"""3D mesh generation from DEM data with UV mapping support."""
-
 import logging
 from pathlib import Path
 from typing import Optional, Tuple

@@ -1,5 +1,3 @@
-"""Material configuration loader for JSON-based material definitions."""
-
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, Union

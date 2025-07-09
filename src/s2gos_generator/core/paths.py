@@ -1,5 +1,3 @@
-"""Path utilities with fsspec integration for unified file access."""
-
 from pathlib import Path
 from typing import Union, Any, Dict
 import json

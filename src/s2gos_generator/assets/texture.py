@@ -226,26 +226,24 @@ class TextureGenerator:
         
         return selection_path, preview_path
 
-    def generate_mask_texture(
+    def generate_buffer_mask(
         self,
         mask_size: int,
         target_size: int,
-        output_path: Path,
-        generate_background_mask: bool = True
+        output_path: Path
     ) -> Path:
         """
-        Generates a square mask texture for buffer/background masking.
+        Generates a square buffer mask texture with center hole for target area.
         
         Args:
             mask_size: Total size of the mask in pixels (buffer area)
             target_size: Size of the center hole in pixels (target area)
             output_path: Path where the mask will be saved
-            generate_background_mask: If True, also generate inverted mask for background
             
         Returns:
             Path to the generated mask file
         """
-        logging.info(f"Generating mask texture {mask_size}x{mask_size} with {target_size}x{target_size} center hole")
+        logging.info(f"Generating buffer mask texture {mask_size}x{mask_size} with {target_size}x{target_size} center hole")
         
         mask = np.ones((mask_size, mask_size), dtype=np.uint8) * 255
         
@@ -263,18 +261,5 @@ class TextureGenerator:
         image = Image.fromarray(mask, mode='L')
         image.save(output_path)
         logging.info(f"Buffer mask texture saved to {output_path}")
-        
-        if generate_background_mask:
-            bg_mask_path = output_path.parent / f"background_{output_path.name}"
-            
-            bg_mask_3x3 = np.array([
-                [255, 255, 255],
-                [255,   0, 255], 
-                [255, 255, 255]
-            ], dtype=np.uint8)
-            
-            bg_image = Image.fromarray(bg_mask_3x3, mode='L')
-            bg_image.save(bg_mask_path)
-            logging.info(f"Background mask texture (3x3) saved to {bg_mask_path}")
         
         return output_path

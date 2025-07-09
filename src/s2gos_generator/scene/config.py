@@ -64,6 +64,7 @@ class SceneConfig:
     name: str
     metadata: SceneMetadata
     landcover_ids: Dict[str, int]
+    material_indices: Dict[int, str]
     materials: Dict[str, Material]
     target: Dict[str, Any]
     buffer: Optional[Dict[str, Any]] = None
@@ -78,6 +79,7 @@ class SceneConfig:
                 **self.metadata.to_dict()
             },
             "landcover_ids": self.landcover_ids,
+            "material_indices": self.material_indices,
             "materials": {k: v.to_dict() for k, v in self.materials.items()},
             "target": self.target
         }
@@ -310,6 +312,13 @@ def create_s2gos_scene(
     if landcover_mapping_overrides:
         material_mapping.update(landcover_mapping_overrides)
     
+    # Create material indices mapping for backend use
+    material_indices = {}
+    for landcover_class_name, texture_index in landcover_ids.items():
+        if landcover_class_name in material_mapping:
+            material_name = material_mapping[landcover_class_name]
+            material_indices[texture_index] = material_name
+    
     target = {
         "mesh": mesh_path,
         "selection_texture": texture_path, 
@@ -332,14 +341,11 @@ def create_s2gos_scene(
         from ..assets.texture import TextureGenerator
         texture_gen = TextureGenerator()
         mask_path = output_dir / "textures" / f"mask_{scene_name}_{int(buffer_size_km)}km_buffer_{int(aoi_size_km)}km_target.bmp"
-        texture_gen.generate_mask_texture(
+        texture_gen.generate_buffer_mask(
             mask_size=buffer_resolution,
             target_size=target_resolution, 
-            output_path=mask_path,
-            generate_background_mask=True
+            output_path=mask_path
         )
-        
-        background_mask_path = mask_path.parent / f"background_{mask_path.name}"
         
         # Use the same material mapping for buffer as target
         buffer_material_mapping = material_mapping.copy()
@@ -405,6 +411,7 @@ def create_s2gos_scene(
         name=scene_name,
         metadata=metadata,
         landcover_ids=landcover_ids,
+        material_indices=material_indices,
         materials=materials,
         target=target,
         buffer=buffer,

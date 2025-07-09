@@ -8,6 +8,33 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 import os
 import json
 import yaml
+import fsspec
+
+from .paths import read_yaml, exists
+
+
+def load_defaults() -> Dict[str, Any]:
+    """Load default paths from defaults.yaml file."""
+    # Look for defaults.yaml in the generator package directory
+    defaults_path = Path(__file__).parent.parent.parent.parent / "defaults.yaml"
+    
+    if not exists(defaults_path):
+        return {}
+    
+    defaults = read_yaml(defaults_path)
+    
+    # Convert relative paths to absolute paths (relative to generator package)
+    generator_root = Path(__file__).parent.parent.parent.parent
+    for key, value in defaults.items():
+        if isinstance(value, str) and not value.startswith(("/", "s3://", "gcs://", "azure://")):
+            defaults[key] = generator_root / value
+    
+    return defaults
+
+
+def open_file(path: Union[Path, str], mode: str = 'r'):
+    """Open a file using fsspec for unified access."""
+    return fsspec.open(str(path), mode=mode)
 
 
 def _serialize_path(path: Union[Path, str, None]) -> Optional[str]:
@@ -87,34 +114,38 @@ class SceneLocation(BaseModel):
 
 class DataSources(BaseModel):
     """Data source configuration with validation."""
-    dem_index_path: Path = Field(..., description="Path to DEM index file")
-    dem_root_dir: Path = Field(..., description="Root directory for DEM data")
-    landcover_index_path: Path = Field(..., description="Path to landcover index file")
-    landcover_root_dir: Path = Field(..., description="Root directory for landcover data")
-    material_config_path: Path = Field(..., description="Path to custom material configuration JSON")
+    dem_index_path: Union[Path, str] = Field(..., description="Path to DEM index file")
+    dem_root_dir: Union[Path, str] = Field(..., description="Root directory for DEM data")
+    landcover_index_path: Union[Path, str] = Field(..., description="Path to landcover index file")
+    landcover_root_dir: Union[Path, str] = Field(..., description="Root directory for landcover data")
+    material_config_path: Union[Path, str] = Field(..., description="Path to custom material configuration JSON")
     
-    @field_validator('dem_index_path', 'landcover_index_path')
+    @field_validator('dem_index_path', 'landcover_index_path', 'material_config_path')
     @classmethod
-    def validate_index_files(cls, v):
-        """Validate that index files exist."""
-        if not v.exists():
-            raise ValueError(f"Index file does not exist: {v}")
+    def validate_files(cls, v):
+        """Validate that files exist for local paths."""
+        path_str = str(v)
+        # Skip validation for remote paths
+        if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
+            return v
+        # Validate local paths
+        path = Path(v)
+        if not path.exists():
+            raise ValueError(f"File does not exist: {v}")
         return v
     
     @field_validator('dem_root_dir', 'landcover_root_dir')
     @classmethod
-    def validate_root_dirs(cls, v):
-        """Validate that root directories exist."""
-        if not v.exists():
-            raise ValueError(f"Root directory does not exist: {v}")
-        return v
-    
-    @field_validator('material_config_path')
-    @classmethod
-    def validate_material_config(cls, v):
-        """Validate that material config file exists if provided."""
-        if not v.exists():
-            raise ValueError(f"Material config file does not exist: {v}")
+    def validate_dirs(cls, v):
+        """Validate that directories exist for local paths."""
+        path_str = str(v)
+        # Skip validation for remote paths
+        if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
+            return v
+        # Validate local paths
+        path = Path(v)
+        if not path.exists():
+            raise ValueError(f"Directory does not exist: {v}")
         return v
 
 
@@ -488,16 +519,38 @@ def create_scene_config(
     center_lat: float,
     center_lon: float,
     aoi_size_km: float,
-    dem_index_path: Path,
-    dem_root_dir: Path,
-    landcover_index_path: Path,
-    landcover_root_dir: Path,
-    material_config_path: Path,
     output_dir: Path,
     target_resolution_m: float = 30.0,
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    dem_index_path: Optional[Union[Path, str]] = None,
+    dem_root_dir: Optional[Union[Path, str]] = None,
+    landcover_index_path: Optional[Union[Path, str]] = None,
+    landcover_root_dir: Optional[Union[Path, str]] = None,
+    material_config_path: Optional[Union[Path, str]] = None,
 ) -> SceneGenConfig:
-    """Create a basic scene configuration."""
+    """Create a scene configuration using defaults with optional overrides."""
+    
+    # Load defaults
+    defaults = load_defaults()
+    
+    # Use overrides if provided, otherwise use defaults
+    final_dem_index_path = dem_index_path if dem_index_path is not None else defaults.get("dem_index_path")
+    final_dem_root_dir = dem_root_dir if dem_root_dir is not None else defaults.get("dem_root_dir")
+    final_landcover_index_path = landcover_index_path if landcover_index_path is not None else defaults.get("landcover_index_path")
+    final_landcover_root_dir = landcover_root_dir if landcover_root_dir is not None else defaults.get("landcover_root_dir")
+    final_material_config_path = material_config_path if material_config_path is not None else defaults.get("material_config_path")
+    
+    # Check that all required paths are available
+    if not final_dem_index_path:
+        raise ValueError("dem_index_path not provided and not found in defaults")
+    if not final_dem_root_dir:
+        raise ValueError("dem_root_dir not provided and not found in defaults")
+    if not final_landcover_index_path:
+        raise ValueError("landcover_index_path not provided and not found in defaults")
+    if not final_landcover_root_dir:
+        raise ValueError("landcover_root_dir not provided and not found in defaults")
+    if not final_material_config_path:
+        raise ValueError("material_config_path not provided and not found in defaults")
     
     return SceneGenConfig(
         scene_name=scene_name,
@@ -508,11 +561,11 @@ def create_scene_config(
             aoi_size_km=aoi_size_km
         ),
         data_sources=DataSources(
-            dem_index_path=dem_index_path,
-            dem_root_dir=dem_root_dir,
-            landcover_index_path=landcover_index_path,
-            landcover_root_dir=landcover_root_dir,
-            material_config_path=material_config_path
+            dem_index_path=Path(final_dem_index_path) if not str(final_dem_index_path).startswith(("s3://", "gcs://", "azure://")) else final_dem_index_path,
+            dem_root_dir=Path(final_dem_root_dir) if not str(final_dem_root_dir).startswith(("s3://", "gcs://", "azure://")) else final_dem_root_dir,
+            landcover_index_path=Path(final_landcover_index_path) if not str(final_landcover_index_path).startswith(("s3://", "gcs://", "azure://")) else final_landcover_index_path,
+            landcover_root_dir=Path(final_landcover_root_dir) if not str(final_landcover_root_dir).startswith(("s3://", "gcs://", "azure://")) else final_landcover_root_dir,
+            material_config_path=Path(final_material_config_path) if not str(final_material_config_path).startswith(("s3://", "gcs://", "azure://")) else final_material_config_path
         ),
         output_dir=output_dir,
         processing=ProcessingOptions(

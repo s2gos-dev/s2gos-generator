@@ -5,6 +5,8 @@ from typing import Dict, Any, Callable, ClassVar
 from pathlib import Path
 import xarray as xr
 
+from ..core.paths import open_dataset
+
 try:
     from eradiate import KernelContext
     from eradiate.kernel import TypeIdLookupStrategy, UpdateParameter
@@ -64,7 +66,7 @@ def _spectral_parameter_converter(value: Any) -> Callable[[KernelContext], float
         else:
             full_path = Path(file_path)
             
-        ds = xr.load_dataset(full_path)
+        ds = open_dataset(full_path)
         da = ds[variable]
         s = InterpolatedSpectrum.from_dataarray(dataarray=da)
 

@@ -2,29 +2,30 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import geopandas as gpd
 import xarray as xr
 from shapely.geometry import Polygon
 
 from .datautil import regrid_to_projection
+from ..core.paths import read_geofeather, exists, open_dataarray
 
 
 
 class LandCoverProcessor:
     """Finds, merges, and processes ESA WorldCover land cover tiles for a given AOI."""
 
-    def __init__(self, index_path: Path, landcover_root_dir: Path):
+    def __init__(self, index_path: Union[Path, str], landcover_root_dir: Union[Path, str]):
         """Initialize the land cover processor."""
-        if not index_path.exists():
+        if not exists(index_path):
             raise FileNotFoundError(f"Index file not found at: {index_path}")
-        if not landcover_root_dir.is_dir():
+        if not exists(landcover_root_dir):
             raise NotADirectoryError(f"Land cover root directory not found: {landcover_root_dir}")
 
         logging.info("Loading land cover index file...")
-        self.index_gdf = gpd.read_feather(index_path)
-        self.landcover_root_dir = landcover_root_dir
+        self.index_gdf = read_geofeather(index_path)
+        self.landcover_root_dir = Path(landcover_root_dir)  # Keep as Path for joining
         logging.info("LandCoverProcessor initialized successfully.")
 
     def _find_intersecting_tiles(self, aoi_polygon: Polygon) -> List[Path]:
@@ -48,7 +49,7 @@ class LandCoverProcessor:
         
         data_arrays = []
         for path in tile_paths:
-            with xr.open_dataarray(path, engine="rasterio") as da:
+            with open_dataarray(path, engine="rasterio") as da:
                 processed_da = (
                     da.isel(band=0, drop=True)
                       .rename("landcover")

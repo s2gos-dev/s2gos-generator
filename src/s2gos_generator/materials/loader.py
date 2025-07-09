@@ -2,15 +2,16 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 from .definitions import Material
+from ..core.paths import read_json, exists
 
 
 class MaterialConfigLoader:
     """Loads material configurations from JSON files."""
     
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Union[Path, str]] = None):
         """Initialize the loader with a configuration file path.
         
         Args:
@@ -20,7 +21,7 @@ class MaterialConfigLoader:
             # Use the default materials.json file
             config_path = Path(__file__).parent.parent / "data" / "materials.json"
         
-        self.config_path = Path(config_path)
+        self.config_path = config_path
         self._config_cache: Optional[Dict[str, Any]] = None
     
     def _load_config(self) -> Dict[str, Any]:
@@ -34,11 +35,10 @@ class MaterialConfigLoader:
             json.JSONDecodeError: If the JSON is invalid
         """
         if self._config_cache is None:
-            if not self.config_path.exists():
+            if not exists(self.config_path):
                 raise FileNotFoundError(f"Material configuration file not found: {self.config_path}")
             
-            with open(self.config_path, 'r') as f:
-                self._config_cache = json.load(f)
+            self._config_cache = read_json(self.config_path)
         
         return self._config_cache
     

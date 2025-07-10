@@ -209,9 +209,17 @@ class ParticleDistribution(BaseModel):
 
 
 class ExponentialDistribution(ParticleDistribution):
-    """Exponential particle distribution."""
+    """Exponential particle distribution - direct Eradiate API mapping."""
     type: Literal["exponential"] = "exponential"
-    scale_height: float = Field(1000.0, gt=0.0, description="Scale height in meters")
+    rate: Optional[float] = Field(None, gt=0.0, description="Eradiate decay rate λ (default 5.0)")
+    scale: Optional[float] = Field(None, gt=0.0, description="Eradiate scale β = 1/λ")
+    
+    @model_validator(mode='after')
+    def validate_exclusive_params(self):
+        """Validate that rate and scale are mutually exclusive per Eradiate API."""
+        if self.rate is not None and self.scale is not None:
+            raise ValueError("rate and scale are mutually exclusive per Eradiate API")
+        return self
 
 
 class GaussianDistribution(ParticleDistribution):
@@ -323,7 +331,6 @@ class BufferConfig(BaseModel):
     enabled: bool = Field(False, description="Enable buffer/background system")
     buffer_size_km: float = Field(..., gt=0.0, description="Buffer size in kilometers")
     buffer_resolution_m: float = Field(100.0, gt=0.0, description="Buffer resolution in meters")
-    background_material: BackgroundMaterial = Field(BackgroundMaterial.WATER, description="Background material")
     background_elevation: float = Field(0.0, description="Background elevation in meters")
     background_size_km: float = Field(100.0, gt=0.0, description="Background area size in kilometers")
     background_resolution_m: float = Field(200.0, gt=0.0, description="Background resolution in meters")
@@ -413,7 +420,6 @@ class SceneGenConfig(BaseModel):
         return cls(**data)
     
     def enable_buffer_system(self, buffer_size_km: float, buffer_resolution_m: float = 100.0,
-                           background_material: BackgroundMaterial = BackgroundMaterial.WATER,
                            background_elevation: float = 0.0, background_size_km: float = 100.0,
                            background_resolution_m: float = 200.0):
         """Enable and configure buffer/background system."""
@@ -421,7 +427,6 @@ class SceneGenConfig(BaseModel):
             enabled=True,
             buffer_size_km=buffer_size_km,
             buffer_resolution_m=buffer_resolution_m,
-            background_material=background_material,
             background_elevation=background_elevation,
             background_size_km=background_size_km,
             background_resolution_m=background_resolution_m
@@ -677,7 +682,7 @@ def create_custom_particle_layer(
         ParticleLayerConfig
     """
     if distribution_type == "exponential":
-        distribution = ExponentialDistribution(scale_height=scale_height)
+        distribution = ExponentialDistribution(rate=1.0/scale_height)
     elif distribution_type == "uniform":
         distribution = UniformDistribution()
     else:

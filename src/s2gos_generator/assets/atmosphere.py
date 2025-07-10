@@ -257,12 +257,15 @@ def create_particle_layer_from_config(
     }
 
     if particle_config.distribution.type == "exponential":
-        height = particle_config.altitude_top - particle_config.altitude_bottom
-        rate = height / particle_config.distribution.scale_height
-        layer_config["distribution"] = {
-            "type": "exponential",
-            "rate": rate
-        }
+        distribution_dict = {"type": "exponential"}
+        if particle_config.distribution.rate is not None:
+            distribution_dict["rate"] = particle_config.distribution.rate
+        elif particle_config.distribution.scale is not None:
+            distribution_dict["scale"] = particle_config.distribution.scale
+        else:
+            distribution_dict["rate"] = 5.0
+        
+        layer_config["distribution"] = distribution_dict
         layer_config["tau_ref"] = particle_config.optical_thickness
 
     elif particle_config.distribution.type == "gaussian":

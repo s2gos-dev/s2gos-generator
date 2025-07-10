@@ -235,7 +235,10 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                 
                 # Add distribution-specific parameters
                 if layer.distribution.type == "exponential":
-                    layer_dict["scale_height"] = layer.distribution.scale_height
+                    if layer.distribution.rate is not None:
+                        layer_dict["rate"] = layer.distribution.rate
+                    elif layer.distribution.scale is not None:
+                        layer_dict["scale"] = layer.distribution.scale
                 elif layer.distribution.type == "gaussian":
                     layer_dict["center_altitude"] = layer.distribution.center_altitude
                     layer_dict["width"] = layer.distribution.width

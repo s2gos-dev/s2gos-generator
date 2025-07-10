@@ -101,11 +101,6 @@ class SceneGenerationPipeline:
         return self.config.buffer.buffer_resolution_m if self.config.buffer else 100.0
 
     @property
-    def background_material(self) -> str:
-        """Get background material from the configuration."""
-        return self.config.buffer.background_material.value if self.config.buffer else "water"
-
-    @property
     def background_elevation(self) -> float:
         """Get background elevation from the configuration."""
         return self.config.buffer.background_elevation if self.config.buffer else 0.0

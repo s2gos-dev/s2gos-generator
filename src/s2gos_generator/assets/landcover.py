@@ -44,20 +44,48 @@ class LandCoverProcessor:
     def _merge_tiles(self, tile_paths: List[Path]) -> xr.Dataset:
         """Merge multiple land cover GeoTIFFs into a single xarray Dataset."""
         logging.info(f"Opening and preparing {len(tile_paths)} tiles for merging...")
+        logging.info(f"Tile paths: {[str(p) for p in tile_paths]}")
         
         data_arrays = []
-        for path in tile_paths:
-            with open_dataarray(path, engine="rasterio") as da:
-                processed_da = (
-                    da.isel(band=0, drop=True)
-                      .rename("landcover")
-                      .rename({"x": "lon", "y": "lat"})
-                      .astype("uint8")
-                )
-                data_arrays.append(processed_da)
+        for i, path in enumerate(tile_paths):
+            logging.info(f"Processing tile {i+1}/{len(tile_paths)}: {path}")
+            try:
+                with open_dataarray(path, engine="rasterio") as da:
+                    logging.info(f"  Original shape: {da.shape}, CRS: {da.rio.crs}, dtype: {da.dtype}")
+                    logging.info(f"  Spatial extent: x=[{da.x.min().values:.6f}, {da.x.max().values:.6f}], y=[{da.y.min().values:.6f}, {da.y.max().values:.6f}]")
+                    
+                    processed_da = (
+                        da.isel(band=0, drop=True)
+                          .rename("landcover")
+                          .rename({"x": "lon", "y": "lat"})
+                          .astype("uint8")
+                    )
+                    logging.info(f"  Processed shape: {processed_da.shape}, coordinates: lon=[{processed_da.lon.min().values:.6f}, {processed_da.lon.max().values:.6f}], lat=[{processed_da.lat.min().values:.6f}, {processed_da.lat.max().values:.6f}]")
+                    data_arrays.append(processed_da)
+            except Exception as e:
+                logging.error(f"  Failed to process tile {path}: {e}")
+                raise
 
         logging.info("Merging tiles into a single dataset...")
-        merged_ds = xr.merge(data_arrays, compat="no_conflicts")
+        logging.info(f"Number of data arrays to merge: {len(data_arrays)}")
+        
+        # Log coordinate compatibility before merging
+        if len(data_arrays) > 1:
+            for i, da in enumerate(data_arrays):
+                logging.info(f"  Array {i}: lon=[{da.lon.min().values:.6f}, {da.lon.max().values:.6f}], lat=[{da.lat.min().values:.6f}, {da.lat.max().values:.6f}]")
+        
+        try:
+            merged_ds = xr.merge(data_arrays, compat="no_conflicts")
+            logging.info(f"Merge successful. Final dataset shape: {merged_ds.landcover.shape}")
+        except Exception as e:
+            logging.error(f"Merge failed: {e}")
+            logging.error(f"Attempting merge with 'override' compatibility...")
+            try:
+                merged_ds = xr.merge(data_arrays, compat="override")
+                logging.warning(f"Merge with 'override' successful. Final dataset shape: {merged_ds.landcover.shape}")
+            except Exception as e2:
+                logging.error(f"Merge with 'override' also failed: {e2}")
+                raise e
         
         logging.info("Filling NaN values with water landcover class (7)")
         merged_ds = merged_ds.fillna(7)

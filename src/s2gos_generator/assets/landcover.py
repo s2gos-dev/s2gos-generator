@@ -5,6 +5,8 @@ from typing import List, Optional, Tuple, Union
 import geopandas as gpd
 import xarray as xr
 from shapely.geometry import Polygon
+import rioxarray as rxr
+import psutil
 
 from .datautil import regrid_to_projection
 from ..core.paths import read_geofeather, exists, open_dataarray
@@ -40,56 +42,72 @@ class LandCoverProcessor:
         
         logging.info(f"Found {len(filepaths)} intersecting land cover tile(s).")
         return filepaths
+    
+    def _calculate_optimal_chunk_size(self, num_tiles: int) -> int:
+        """Calculate optimal chunk size based on available memory and tile count."""
+        # Get available memory in GB
+        available_memory_gb = psutil.virtual_memory().available / (1024**3)
+        
+        # Target: ~1 million elements per chunk (xarray best practice)
+        base_chunk_size = int((1_000_000) ** 0.5)
+        
+        # Scale down if many tiles or limited memory
+        memory_factor = min(1.0, available_memory_gb / 8.0)  # Scale down if < 8GB
+        tile_factor = min(1.0, 4.0 / num_tiles) 
+        
+        chunk_size = int(base_chunk_size * memory_factor * tile_factor)
+        chunk_size = max(512, min(chunk_size, 4096))
+        
+        logging.info(f"Memory: {available_memory_gb:.1f}GB, {num_tiles} tiles → chunk size: {chunk_size}x{chunk_size}")
+        return chunk_size
 
-    def _merge_tiles(self, tile_paths: List[Path]) -> xr.Dataset:
-        """Merge multiple land cover GeoTIFFs into a single xarray Dataset."""
-        logging.info(f"Opening and preparing {len(tile_paths)} tiles for merging...")
-        logging.info(f"Tile paths: {[str(p) for p in tile_paths]}")
+    def _merge_tiles(self, tile_paths: List[Path], aoi_polygon: Optional[Polygon] = None) -> xr.Dataset:
+        """Merge multiple land cover GeoTIFFs using Dask with optimal chunks."""
+        logging.info(f"Opening {len(tile_paths)} tiles with optimized Dask chunks...")
+        
+        chunk_size = self._calculate_optimal_chunk_size(len(tile_paths))
+        
+        bbox = None
+        if aoi_polygon:
+            bbox = aoi_polygon.bounds
+            logging.info(f"Using AOI bbox for early filtering: {bbox}")
         
         data_arrays = []
         for i, path in enumerate(tile_paths):
-            logging.info(f"Processing tile {i+1}/{len(tile_paths)}: {path}")
-            try:
-                with open_dataarray(path, engine="rasterio") as da:
-                    logging.info(f"  Original shape: {da.shape}, CRS: {da.rio.crs}, dtype: {da.dtype}")
-                    logging.info(f"  Spatial extent: x=[{da.x.min().values:.6f}, {da.x.max().values:.6f}], y=[{da.y.min().values:.6f}, {da.y.max().values:.6f}]")
-                    
-                    processed_da = (
-                        da.isel(band=0, drop=True)
-                          .rename("landcover")
-                          .rename({"x": "lon", "y": "lat"})
-                          .astype("uint8")
-                    )
-                    logging.info(f"  Processed shape: {processed_da.shape}, coordinates: lon=[{processed_da.lon.min().values:.6f}, {processed_da.lon.max().values:.6f}], lat=[{processed_da.lat.min().values:.6f}, {processed_da.lat.max().values:.6f}]")
-                    data_arrays.append(processed_da)
-            except Exception as e:
-                logging.error(f"  Failed to process tile {path}: {e}")
-                raise
-
-        logging.info("Merging tiles into a single dataset...")
-        logging.info(f"Number of data arrays to merge: {len(data_arrays)}")
+            logging.info(f"Opening tile {i+1}/{len(tile_paths)}: {path}")
+            
+            # Open with chunks, uses Dask
+            da = rxr.open_rasterio(path, chunks={'x': chunk_size, 'y': chunk_size})
+            
+            # Early spatial filtering if bbox provided
+            if bbox:
+                try:
+                    # Rough clip to bounding box first to reduce data volume
+                    da = da.sel(x=slice(bbox[0], bbox[2]), y=slice(bbox[3], bbox[1]))
+                except (KeyError, ValueError):
+                    # If coordinates don't overlap, skip this early filtering
+                    pass
+            
+            # Process lazily
+            processed = (
+                da.isel(band=0, drop=True)
+                .rename({'x': 'lon', 'y': 'lat'})
+                .rename('landcover')
+                .astype('uint8')
+            )
+            
+            logging.info(f"  Chunks: {processed.chunks}")
+            data_arrays.append(processed)
         
-        # Log coordinate compatibility before merging
-        if len(data_arrays) > 1:
-            for i, da in enumerate(data_arrays):
-                logging.info(f"  Array {i}: lon=[{da.lon.min().values:.6f}, {da.lon.max().values:.6f}], lat=[{da.lat.min().values:.6f}, {da.lat.max().values:.6f}]")
+        logging.info("Merging with xr.merge (preserves Dask arrays)...")
         
-        try:
-            merged_ds = xr.merge(data_arrays, compat="no_conflicts")
-            logging.info(f"Merge successful. Final dataset shape: {merged_ds.landcover.shape}")
-        except Exception as e:
-            logging.error(f"Merge failed: {e}")
-            logging.error(f"Attempting merge with 'override' compatibility...")
-            try:
-                merged_ds = xr.merge(data_arrays, compat="override")
-                logging.warning(f"Merge with 'override' successful. Final dataset shape: {merged_ds.landcover.shape}")
-            except Exception as e2:
-                logging.error(f"Merge with 'override' also failed: {e2}")
-                raise e
+        merged_ds = xr.merge(data_arrays)
         
-        logging.info("Filling NaN values with water landcover class (7)")
+        logging.info(f"Merged. Shape: {merged_ds.landcover.shape}")
+        logging.info(f"Data type: {type(merged_ds.landcover.data)}")
+        
         merged_ds = merged_ds.fillna(7)
-
+        
         return merged_ds
 
     def _clip_to_aoi(self, dataset: xr.Dataset, aoi_polygon: Polygon) -> xr.Dataset:
@@ -157,7 +175,14 @@ class LandCoverProcessor:
     ) -> xr.Dataset:
         """Generate landcover data for the AOI."""
         tile_paths = self._find_intersecting_tiles(aoi_polygon)
-        merged_landcover = self._merge_tiles(tile_paths)
+        
+        # Pass AOI to merge for early spatial filtering
+        merged_landcover = self._merge_tiles(tile_paths, aoi_polygon)
+        
+        if target_resolution_m is not None:
+            logging.info("Persisting merged data before regridding...")
+            merged_landcover = merged_landcover.persist()
+        
         clipped_landcover = self._clip_to_aoi(merged_landcover, aoi_polygon)
         
         if target_resolution_m is not None and center_lat is not None and center_lon is not None and aoi_size_km is not None:

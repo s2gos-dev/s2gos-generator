@@ -1,7 +1,6 @@
-from .description import SceneDescription, SceneGeometry
-from .config import SceneConfig, SceneMetadata, create_s2gos_scene
+from s2gos_utils.scene import SceneDescription
+from .config import create_s2gos_scene
 
 __all__ = [
-    "SceneDescription", "SceneGeometry", 
-    "SceneConfig", "SceneMetadata", "create_s2gos_scene"
+    "SceneDescription", "create_s2gos_scene"
 ]

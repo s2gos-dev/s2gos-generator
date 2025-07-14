@@ -10,12 +10,11 @@ import json
 import yaml
 import fsspec
 
-from .paths import read_yaml, exists
+from s2gos_utils.io.paths import read_yaml, exists, open_file
 
 
 def load_defaults() -> Dict[str, Any]:
     """Load default paths from defaults.yaml file."""
-    # Look for defaults.yaml in the generator package directory
     defaults_path = Path(__file__).parent.parent.parent.parent / "defaults.yaml"
     
     if not exists(defaults_path):
@@ -23,7 +22,6 @@ def load_defaults() -> Dict[str, Any]:
     
     defaults = read_yaml(defaults_path)
     
-    # Convert relative paths to absolute paths (relative to generator package)
     generator_root = Path(__file__).parent.parent.parent.parent
     for key, value in defaults.items():
         if isinstance(value, str) and not value.startswith(("/", "s3://", "gcs://", "azure://")):
@@ -51,27 +49,8 @@ def _deserialize_path(path_str: Optional[str]) -> Optional[Path]:
     return Path(path_str)
 
 
-class MaterialType(str, Enum):
-    """Material types for scene surfaces."""
-    DIFFUSE = "diffuse"
-    RPV = "rpv"
-    BILAMBERTIAN = "bilambertian"
-    OCEAN_LEGACY = "ocean_legacy"
-
-
-class BackgroundMaterial(str, Enum):
-    """Available background materials."""
-    WATER = "water"
-    BARESOIL = "baresoil"
-    CONCRETE = "concrete"
-    SNOW = "snow"
-    MOSS = "moss"
-    TREECOVER = "treecover"
-    SHRUBLAND = "shrubland"
-    GRASSLAND = "grassland"
-    CROPLAND = "cropland"
-    MANGROVES = "mangroves"
-    WETLAND = "wetland"
+# Material enums moved to s2gos_utils.scene.materials.enums
+from s2gos_utils.scene.materials.enums import MaterialType, BackgroundMaterial
 
 
 class AerosolDataset(str, Enum):
@@ -125,10 +104,8 @@ class DataSources(BaseModel):
     def validate_files(cls, v):
         """Validate that files exist for local paths."""
         path_str = str(v)
-        # Skip validation for remote paths
         if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
             return v
-        # Validate local paths
         path = Path(v)
         if not path.exists():
             raise ValueError(f"File does not exist: {v}")
@@ -139,10 +116,8 @@ class DataSources(BaseModel):
     def validate_dirs(cls, v):
         """Validate that directories exist for local paths."""
         path_str = str(v)
-        # Skip validation for remote paths
         if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
             return v
-        # Validate local paths
         path = Path(v)
         if not path.exists():
             raise ValueError(f"Directory does not exist: {v}")
@@ -408,14 +383,14 @@ class SceneGenConfig(BaseModel):
         """Export to JSON format."""
         json_str = self.model_dump_json(indent=indent)
         if path:
-            with open(path, 'w') as f:
+            with open_file(path, 'w') as f:
                 f.write(json_str)
         return json_str
     
     @classmethod
     def from_json(cls, path: Path) -> 'SceneGenConfig':
         """Load from JSON file."""
-        with open(path, 'r') as f:
+        with open_file(path, 'r') as f:
             data = json.load(f)
         return cls(**data)
     
@@ -479,14 +454,12 @@ class SceneGenConfig(BaseModel):
         """Validate the complete configuration and return any errors."""
         errors = []
         
-        # Check data sources
         if not self.data_sources.dem_index_path.exists():
             errors.append(f"DEM index file not found: {self.data_sources.dem_index_path}")
         
         if not self.data_sources.landcover_index_path.exists():
             errors.append(f"Landcover index file not found: {self.data_sources.landcover_index_path}")
         
-        # Check buffer configuration
         if self.buffer and self.buffer.enabled:
             if self.buffer.buffer_size_km <= self.location.aoi_size_km:
                 errors.append("Buffer size must be larger than AOI size")
@@ -535,10 +508,8 @@ def create_scene_config(
 ) -> SceneGenConfig:
     """Create a scene configuration using defaults with optional overrides."""
     
-    # Load defaults
     defaults = load_defaults()
     
-    # Use overrides if provided, otherwise use defaults
     final_dem_index_path = dem_index_path if dem_index_path is not None else defaults.get("dem_index_path")
     final_dem_root_dir = dem_root_dir if dem_root_dir is not None else defaults.get("dem_root_dir")
     final_landcover_index_path = landcover_index_path if landcover_index_path is not None else defaults.get("landcover_index_path")

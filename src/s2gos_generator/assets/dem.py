@@ -9,7 +9,7 @@ from pyproj import CRS, Transformer
 from shapely.geometry import Polygon
 
 from .datautil import regrid_to_projection
-from ..core.paths import read_geofeather, exists, open_dataarray
+from s2gos_utils.io.paths import read_geofeather, exists, open_dataarray
 
 
 def create_aoi_polygon(
@@ -53,7 +53,7 @@ class DEMProcessor:
 
         logging.info("Loading DEM index file...")
         self.index_gdf = read_geofeather(index_path)
-        self.dem_root_dir = Path(dem_root_dir)  # Keep as Path for joining
+        self.dem_root_dir = Path(dem_root_dir)
         logging.info("DEMProcessor initialized successfully.")
 
     def _find_intersecting_tiles(self, aoi_polygon: Polygon) -> List[Path]:

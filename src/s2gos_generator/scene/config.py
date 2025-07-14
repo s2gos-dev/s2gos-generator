@@ -5,7 +5,9 @@ import yaml
 import os
 from datetime import datetime
 
-from ..materials import Material, load_materials, get_landcover_mapping
+from s2gos_utils.scene.materials import Material, load_materials, get_landcover_mapping
+from s2gos_utils.scene import SceneDescription
+from s2gos_utils.io.paths import open_file
 
 
 def _serialize_path(path: Union[Path, str, None]) -> Optional[str]:
@@ -55,108 +57,8 @@ class SceneMetadata:
         return result
 
 
-@dataclass
-class SceneConfig:
-    """Scene configuration for multi-scale earth observation scenes."""
-    
-    name: str
-    metadata: SceneMetadata
-    landcover_ids: Dict[str, int]
-    material_indices: Dict[int, str]
-    materials: Dict[str, Material]
-    target: Dict[str, Any]
-    buffer: Optional[Dict[str, Any]] = None
-    background: Optional[Dict[str, Any]] = None
-    atmosphere: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
-        result = {
-            "scene": {
-                "name": self.name,
-                **self.metadata.to_dict()
-            },
-            "landcover_ids": self.landcover_ids,
-            "material_indices": self.material_indices,
-            "materials": {k: v.to_dict() for k, v in self.materials.items()},
-            "target": self.target
-        }
-        
-        if self.buffer:
-            result["buffer"] = self.buffer
-        if self.background:
-            result["background"] = self.background
-        if self.atmosphere:
-            result["atmosphere"] = self.atmosphere
-            
-        return result
-    
-    def save_yaml(self, path: Path, include_comments: bool = True):
-        """Save scene configuration to YAML file."""
-        data = self.to_dict()
-        
-        with open(path, 'w') as f:
-            if include_comments:
-                f.write("# S2GOS Generated Scene Configuration\n")
-                f.write(f"# Generated: {datetime.now().isoformat()}\n")
-            
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False, 
-                     allow_unicode=True, width=120)
-    
-    @classmethod
-    def from_yaml(cls, path: Path) -> 'SceneConfig':
-        """Load scene configuration from YAML file."""
-        with open(path, 'r') as f:
-            data = yaml.safe_load(f)
-        
-        # Extract scene metadata
-        scene_info = data.get("scene", {})
-        metadata = SceneMetadata(
-            center_lat=scene_info["center_lat"],
-            center_lon=scene_info["center_lon"],
-            aoi_size_km=scene_info["aoi_size_km"],
-            resolution_m=scene_info["resolution_m"],
-            generation_date=scene_info.get("generation_date"),
-            dem_index_path=scene_info.get("generation", {}).get("dem_index_path"),
-            landcover_index_path=scene_info.get("generation", {}).get("landcover_index_path")
-        )
-        
-        # Parse materials
-        materials = {}
-        for mat_id, mat_data in data["materials"].items():
-            mat_type = mat_data.pop("type")
-            spectra = {}
-            params = {}
-            
-            for key, value in mat_data.items():
-                if isinstance(value, dict) and "path" in value:
-                    filename = Path(value["path"]).name
-                    spectra[key] = filename
-                else:
-                    params[key] = value
-            
-            mat_dict = {"type": mat_type}
-            mat_dict.update(params)
-            for key, filename in spectra.items():
-                mat_dict[key] = {"path": filename, "variable": key}
-            
-            materials[mat_id] = Material.from_dict(mat_dict, id=mat_id)
-        
-        return cls(
-            name=scene_info["name"],
-            metadata=metadata,
-            landcover_ids=data["landcover_ids"],
-            materials=materials,
-            target=data["target"],
-            buffer=data.get("buffer"),
-            background=data.get("background"),
-            atmosphere=data.get("atmosphere"),
-            background_elevation=data.get("background_elevation")
-        )
-
-
 def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
-    """Convert rich AtmosphereConfig to scene description dictionary format.
+    """Convert to scene description dictionary format.
     
     Args:
         atmosphere_config: AtmosphereConfig object from scene generation configuration
@@ -173,7 +75,6 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
     }
     
     if atmosphere_config.type == AtmosphereType.MOLECULAR:
-        # Use molecular atmosphere configuration
         mol_config = atmosphere_config.molecular
         base_dict["molecular_atmosphere"] = {
             "thermoprops_identifier": mol_config.thermoprops.identifier,
@@ -187,7 +88,6 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
         }
     
     elif atmosphere_config.type == AtmosphereType.HOMOGENEOUS:
-        # Use homogeneous atmosphere configuration
         homogeneous_config = atmosphere_config.homogeneous
         base_dict.update({
             "aerosol_ot": homogeneous_config.optical_thickness,
@@ -198,14 +98,12 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
         })
     
     elif atmosphere_config.type == AtmosphereType.HETEROGENEOUS:
-        # Use heterogeneous atmosphere configuration
         heterogeneous_config = atmosphere_config.heterogeneous
         base_dict.update({
             "has_molecular_atmosphere": heterogeneous_config.molecular is not None,
             "has_particle_layers": heterogeneous_config.particle_layers is not None and len(heterogeneous_config.particle_layers) > 0
         })
         
-        # Store molecular atmosphere info
         if heterogeneous_config.molecular:
             mol_config = heterogeneous_config.molecular
             base_dict["molecular_atmosphere"] = {
@@ -219,7 +117,6 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                 "has_scattering": mol_config.has_scattering
             }
         
-        # Store particle layers info
         if heterogeneous_config.particle_layers:
             base_dict["particle_layers"] = []
             for layer in heterogeneous_config.particle_layers:
@@ -233,7 +130,6 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                     "has_absorption": layer.has_absorption
                 }
                 
-                # Add distribution-specific parameters
                 if layer.distribution.type == "exponential":
                     if layer.distribution.rate is not None:
                         layer_dict["rate"] = layer.distribution.rate
@@ -260,7 +156,7 @@ def create_s2gos_scene(
     material_config_path: Path = None, material_overrides: Dict[str, Dict[str, Any]] = None,
     landcover_mapping_overrides: Dict[str, str] = None, 
     background_selection_texture: str = None, background_size_km: float = None, **kwargs
-) -> SceneConfig:
+) -> SceneDescription:
     """Create standard S2GOS scene configuration.
     
     Args:
@@ -285,7 +181,7 @@ def create_s2gos_scene(
         **kwargs: Additional configuration parameters
         
     Returns:
-        SceneConfig instance with loaded materials and configuration
+        SceneDescription instance with loaded materials and configuration
     """
     
     metadata = SceneMetadata(
@@ -298,7 +194,6 @@ def create_s2gos_scene(
         landcover_index_path=kwargs.get("landcover_index_path")
     )
     
-    # Load landcover IDs from configuration
     landcover_ids = {
         "tree_cover": 0, "shrubland": 1, "grassland": 2, "cropland": 3,
         "built_up": 4, "bare_sparse_vegetation": 5, "snow_and_ice": 6,
@@ -306,14 +201,11 @@ def create_s2gos_scene(
         "mangroves": 9, "moss_and_lichen": 10
     }
     
-    # Load material mapping from JSON configuration
     material_mapping = get_landcover_mapping(material_config_path)
     
-    # Apply any landcover mapping overrides
     if landcover_mapping_overrides:
         material_mapping.update(landcover_mapping_overrides)
     
-    # Create material indices mapping for backend use
     material_indices = {}
     for landcover_class_name, texture_index in landcover_ids.items():
         if landcover_class_name in material_mapping:
@@ -322,11 +214,10 @@ def create_s2gos_scene(
     
     target = {
         "mesh": mesh_path,
-        "selection_texture": texture_path, 
-        "materials": material_mapping
+        "selection_texture": texture_path,
+        "size_km": aoi_size_km
     }
     
-    # Convert atmosphere configuration to scene description format
     atmosphere_config = kwargs.get("atmosphere_config")
     atmosphere = _convert_atmosphere_config_to_dict(atmosphere_config)
     
@@ -348,16 +239,12 @@ def create_s2gos_scene(
             output_path=mask_path
         )
         
-        # Use the same material mapping for buffer as target
-        buffer_material_mapping = material_mapping.copy()
-        
         buffer = {
             "mesh": buffer_mesh_path,
             "selection_texture": buffer_texture_path,
-            "shape_size": buffer_size_km * 1000.0,
-            "mask_edge_length": aoi_size_km * 1000.0,
-            "mask_texture": _serialize_path(mask_path.relative_to(output_dir)),
-            "materials": buffer_material_mapping
+            "size_km": buffer_size_km,
+            "target_size_km": aoi_size_km,
+            "mask_texture": _serialize_path(mask_path.relative_to(output_dir))
         }
         
         bg_elevation = 0.0
@@ -383,7 +270,6 @@ def create_s2gos_scene(
                 logging.warning(f"Could not calculate average elevation from {buffer_dem_file}: {e}")
                 bg_elevation = 0.0
         
-        # Use new landcover-based background system
         if background_selection_texture and background_size_km:
             background = {
                 "selection_texture": background_selection_texture,
@@ -393,29 +279,37 @@ def create_s2gos_scene(
         else:
             background = None
     
-    # Load materials from JSON configuration
     materials = load_materials(material_config_path)
     
-    # Apply any material overrides
     if material_overrides:
         for material_id, overrides in material_overrides.items():
             if material_id in materials:
-                # Update existing material with overrides
                 current_dict = materials[material_id].to_dict()
                 current_dict.update(overrides)
                 materials[material_id] = Material.from_dict(current_dict, id=material_id)
             else:
-                # Create new material from overrides
                 materials[material_id] = Material.from_dict(overrides, id=material_id)
     
-    return SceneConfig(
+    scene_description = SceneDescription(
         name=scene_name,
-        metadata=metadata,
-        landcover_ids=landcover_ids,
-        material_indices=material_indices,
+        location={
+            "lat": center_lat,
+            "lon": center_lon
+        },
+        resolution_m=resolution_m,
         materials=materials,
+        atmosphere=atmosphere,
         target=target,
         buffer=buffer,
         background=background,
-        atmosphere=atmosphere
+        material_indices=material_indices,
+        metadata={
+            "generation_date": metadata.generation_date,
+            "dem_index_path": metadata.dem_index_path,
+            "landcover_index_path": metadata.landcover_index_path,
+            "landcover_ids": landcover_ids,
+            "materials_config_path": str(material_config_path)
+        }
     )
+    
+    return scene_description

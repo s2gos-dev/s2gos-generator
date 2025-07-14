@@ -3,122 +3,122 @@
     "treecover": {
       "type": "bilambertian",
       "reflectance": {
-        "path": "spectrum_treecover_foliage_high.nc",
+        "path": "spectra/spectrum_treecover_foliage_high.nc",
         "variable": "reflectance"
       },
       "transmittance": {
-        "path": "spectrum_treecover_foliage_high.nc",
+        "path": "spectra/spectrum_treecover_foliage_high.nc",
         "variable": "transmittance"
       }
     },
     "shrubland": {
       "type": "bilambertian",
       "reflectance": {
-        "path": "spectrum_shrubland_foliage.nc",
+        "path": "spectra/spectrum_shrubland_foliage.nc",
         "variable": "reflectance"
       },
       "transmittance": {
-        "path": "spectrum_shrubland_foliage.nc",
+        "path": "spectra/spectrum_shrubland_foliage.nc",
         "variable": "transmittance"
       }
     },
     "cropland": {
       "type": "bilambertian",
       "reflectance": {
-        "path": "spectrum_cropland_foliage_uniform.nc",
+        "path": "spectra/spectrum_cropland_foliage_uniform.nc",
         "variable": "reflectance"
       },
       "transmittance": {
-        "path": "spectrum_cropland_foliage_uniform.nc",
+        "path": "spectra/spectrum_cropland_foliage_uniform.nc",
         "variable": "transmittance"
       }
     },
     "mangroves": {
       "type": "bilambertian",
       "reflectance": {
-        "path": "spectrum_treecover_foliage_high.nc",
+        "path": "spectra/spectrum_treecover_foliage_high.nc",
         "variable": "reflectance"
       },
       "transmittance": {
-        "path": "spectrum_treecover_foliage_high.nc",
+        "path": "spectra/spectrum_treecover_foliage_high.nc",
         "variable": "transmittance"
       }
     },
     "grassland": {
       "type": "rpv",
       "rho_0": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "rho_0"
       },
       "k": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "k"
       },
       "Theta": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "Theta"
       },
       "rho_c": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "rho_c"
       }
     },
     "baresoil": {
       "type": "rpv",
       "rho_0": {
-        "path": "spectrum_baresoil_low.nc",
+        "path": "spectra/spectrum_baresoil_low.nc",
         "variable": "rho_0"
       },
       "k": {
-        "path": "spectrum_baresoil_low.nc",
+        "path": "spectra/spectrum_baresoil_low.nc",
         "variable": "k"
       },
       "Theta": {
-        "path": "spectrum_baresoil_low.nc",
+        "path": "spectra/spectrum_baresoil_low.nc",
         "variable": "Theta"
       },
       "rho_c": {
-        "path": "spectrum_baresoil_low.nc",
+        "path": "spectra/spectrum_baresoil_low.nc",
         "variable": "rho_c"
       }
     },
     "wetland": {
       "type": "rpv",
       "rho_0": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "rho_0"
       },
       "k": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "k"
       },
       "Theta": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "Theta"
       },
       "rho_c": {
-        "path": "spectrum_grassland_rpv_high.nc",
+        "path": "spectra/spectrum_grassland_rpv_high.nc",
         "variable": "rho_c"
       }
     },
     "concrete": {
       "type": "diffuse",
       "reflectance": {
-        "path": "spectrum_concrete.nc",
+        "path": "spectra/spectrum_concrete.nc",
         "variable": "reflectance"
       }
     },
     "snow": {
       "type": "diffuse",
       "reflectance": {
-        "path": "spectrum_snow.nc",
+        "path": "spectra/spectrum_snow.nc",
         "variable": "reflectance"
       }
     },
     "moss": {
       "type": "diffuse",
       "reflectance": {
-        "path": "spectrum_moss.nc",
+        "path": "spectra/spectrum_moss.nc",
         "variable": "reflectance"
       }
     },

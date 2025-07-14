@@ -9,7 +9,7 @@ import rioxarray as rxr
 import psutil
 
 from .datautil import regrid_to_projection
-from ..core.paths import read_geofeather, exists, open_dataarray
+from s2gos_utils.io.paths import read_geofeather, exists, open_dataarray
 
 
 
@@ -25,7 +25,7 @@ class LandCoverProcessor:
 
         logging.info("Loading land cover index file...")
         self.index_gdf = read_geofeather(index_path)
-        self.landcover_root_dir = Path(landcover_root_dir)  # Keep as Path for joining
+        self.landcover_root_dir = Path(landcover_root_dir)
         logging.info("LandCoverProcessor initialized successfully.")
 
     def _find_intersecting_tiles(self, aoi_polygon: Polygon) -> List[Path]:
@@ -197,7 +197,6 @@ class LandCoverProcessor:
         return clipped_landcover
 
 
-# ESA WorldCover class mapping
 ESA_LANDCOVER_CLASSES = {
     10: "Tree cover",
     20: "Shrubland", 

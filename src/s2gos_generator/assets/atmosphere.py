@@ -127,14 +127,12 @@ def create_atmosphere(
     if aerosol_top is None:
         aerosol_top = toa
 
-    # Create thermodynamic profile using US Standard atmosphere
     tp = joseki.make(
         identifier="afgl_1986-us_standard",
         z=np.arange(boa, toa + 10.0, 100.0) * ureg.m,
     )
     tp.joseki.rescale_to({"CO2": 360.0 * ureg.ppm})
 
-    # Create aerosol layer
     aerosol = particle_layer(
         altitude_bottom=aerosol_bottom,
         altitude_ref=aerosol_ref,
@@ -148,7 +146,6 @@ def create_atmosphere(
         "has_absorption": True
     })
 
-    # Combine molecular and particle components
     atmosphere_config = {
         "type": "heterogeneous",
         "molecular_atmosphere": {

@@ -82,7 +82,7 @@ class TextureGenerator:
         self,
         landcover_data: xr.DataArray,
         output_path: Path,
-        flip_vertical: bool = False  # Match the selection texture behavior
+        flip_vertical: bool = True
     ) -> np.ndarray:
         """
         Creates a color preview texture showing the actual material colors.
@@ -123,7 +123,7 @@ class TextureGenerator:
     def _save_selection_texture(self, texture: np.ndarray, output_path: Path) -> None:
         """Save selection texture as a grayscale PNG."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        image = Image.fromarray(texture, mode='L')  # Grayscale
+        image = Image.fromarray(texture, mode='L')
         image.save(output_path)
 
     def _save_color_texture(self, texture: np.ndarray, output_path: Path) -> None:

@@ -7,7 +7,8 @@ import xarray as xr
 from .config import SceneGenConfig
 from .assets import SceneAssets
 from .exceptions import ProcessingError, DataNotFoundError
-from ..assets.dem import DEMProcessor, create_aoi_polygon
+from ..assets.dem import DEMProcessor
+from ..utils import create_aoi_polygon
 from ..assets.landcover import LandCoverProcessor
 from ..assets.mesh import MeshGenerator
 from ..assets.texture import TextureGenerator

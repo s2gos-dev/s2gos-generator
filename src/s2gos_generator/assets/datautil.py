@@ -1,18 +1,11 @@
 from pathlib import Path
 from typing import Union, Optional
 
-import geopandas as gpd
 import numpy as np
 import xarray as xr
 from pyproj import Proj
 
 from ..core.exceptions import RegridError, DataNotFoundError
-
-
-def read_feather_index(file_path: Union[str, Path]) -> gpd.GeoDataFrame:
-    """Load a feather index file into a GeoDataFrame."""
-    return gpd.read_feather(file_path)
-
 
 
 def validate_data_paths(dem_index_path: Path, landcover_index_path: Path, 

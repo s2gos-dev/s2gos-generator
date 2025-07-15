@@ -51,6 +51,8 @@ The S2GOS Scene Generator requires several external data sources. Follow these s
 
 ### Running Examples
 
+Change defaults in `default.yaml` to match where you have placed the DEM and land cover dataset, index and material config files are already included. 
+
 ```bash
 # Simple scene generation
 pixi run python examples/simple_scene_generation.py

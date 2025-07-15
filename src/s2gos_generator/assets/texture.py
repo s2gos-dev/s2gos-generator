@@ -6,19 +6,73 @@ import numpy as np
 import xarray as xr
 from PIL import Image
 
-
 DEFAULT_MATERIALS = [
-    {"name": "Tree cover", "esa_class": 10, "color_8bit": (40, 75, 30), "roughness": 0.6},
-    {"name": "Shrubland", "esa_class": 20, "color_8bit": (185, 170, 130), "roughness": 0.7},
-    {"name": "Grassland", "esa_class": 30, "color_8bit": (140, 155, 95), "roughness": 0.7},
-    {"name": "Cropland", "esa_class": 40, "color_8bit": (240, 150, 255), "roughness": 0.6},
-    {"name": "Built-up", "esa_class": 50, "color_8bit": (150, 150, 150), "roughness": 0.3},
-    {"name": "Bare / sparse vegetation", "esa_class": 60, "color_8bit": (220, 140, 90), "roughness": 0.8},
-    {"name": "Snow and ice", "esa_class": 70, "color_8bit": (240, 240, 240), "roughness": 0.2},
-    {"name": "Permanent water bodies", "esa_class": 80, "color_8bit": (0, 100, 200), "roughness": 0.1},
-    {"name": "Herbaceous wetland", "esa_class": 90, "color_8bit": (80, 120, 90), "roughness": 0.4},
-    {"name": "Mangroves", "esa_class": 95, "color_8bit": (0, 207, 117), "roughness": 0.4},
-    {"name": "Moss and lichen", "esa_class": 100, "color_8bit": (250, 230, 160), "roughness": 0.8},
+    {
+        "name": "Tree cover",
+        "esa_class": 10,
+        "color_8bit": (40, 75, 30),
+        "roughness": 0.6,
+    },
+    {
+        "name": "Shrubland",
+        "esa_class": 20,
+        "color_8bit": (185, 170, 130),
+        "roughness": 0.7,
+    },
+    {
+        "name": "Grassland",
+        "esa_class": 30,
+        "color_8bit": (140, 155, 95),
+        "roughness": 0.7,
+    },
+    {
+        "name": "Cropland",
+        "esa_class": 40,
+        "color_8bit": (240, 150, 255),
+        "roughness": 0.6,
+    },
+    {
+        "name": "Built-up",
+        "esa_class": 50,
+        "color_8bit": (150, 150, 150),
+        "roughness": 0.3,
+    },
+    {
+        "name": "Bare / sparse vegetation",
+        "esa_class": 60,
+        "color_8bit": (220, 140, 90),
+        "roughness": 0.8,
+    },
+    {
+        "name": "Snow and ice",
+        "esa_class": 70,
+        "color_8bit": (240, 240, 240),
+        "roughness": 0.2,
+    },
+    {
+        "name": "Permanent water bodies",
+        "esa_class": 80,
+        "color_8bit": (0, 100, 200),
+        "roughness": 0.1,
+    },
+    {
+        "name": "Herbaceous wetland",
+        "esa_class": 90,
+        "color_8bit": (80, 120, 90),
+        "roughness": 0.4,
+    },
+    {
+        "name": "Mangroves",
+        "esa_class": 95,
+        "color_8bit": (0, 207, 117),
+        "roughness": 0.4,
+    },
+    {
+        "name": "Moss and lichen",
+        "esa_class": 100,
+        "color_8bit": (250, 230, 160),
+        "roughness": 0.8,
+    },
 ]
 
 
@@ -35,15 +89,19 @@ class TextureGenerator:
             materials: List of material definitions. If None, uses default materials.
         """
         self.materials = materials if materials is not None else DEFAULT_MATERIALS
-        self.class_to_index = {mat["esa_class"]: idx for idx, mat in enumerate(self.materials)}
-        logging.info(f"TextureGenerator initialized with {len(self.materials)} materials")
+        self.class_to_index = {
+            mat["esa_class"]: idx for idx, mat in enumerate(self.materials)
+        }
+        logging.info(
+            f"TextureGenerator initialized with {len(self.materials)} materials"
+        )
 
     def landcover_to_selection_texture(
         self,
         landcover_data: xr.DataArray,
         output_path: Path,
         flip_vertical: bool = False,
-        default_material_index: int = 7
+        default_material_index: int = 7,
     ) -> np.ndarray:
         """
         Converts land cover classification data to a material selection texture.
@@ -59,22 +117,26 @@ class TextureGenerator:
         """
         logging.info("Converting land cover data to selection texture...")
         landcover_data.load()
-        
+
         class_values = landcover_data.values
-        
-        selection_texture = np.full_like(class_values, default_material_index, dtype=np.uint8)
-        
+
+        selection_texture = np.full_like(
+            class_values, default_material_index, dtype=np.uint8
+        )
+
         for esa_class, material_index in self.class_to_index.items():
             mask = class_values == esa_class
             selection_texture[mask] = material_index
-            logging.debug(f"Mapped {np.sum(mask)} pixels from ESA class {esa_class} to material index {material_index}")
-        
+            logging.debug(
+                f"Mapped {np.sum(mask)} pixels from ESA class {esa_class} to material index {material_index}"
+            )
+
         if flip_vertical:
             selection_texture = np.flipud(selection_texture)
             logging.info("Applied vertical flip for rendering engine compatibility")
-        
+
         self._save_selection_texture(selection_texture, output_path)
-        
+
         logging.info(f"Selection texture saved to {output_path}")
         return selection_texture
 
@@ -82,7 +144,7 @@ class TextureGenerator:
         self,
         landcover_data: xr.DataArray,
         output_path: Path,
-        flip_vertical: bool = True
+        flip_vertical: bool = True,
     ) -> np.ndarray:
         """
         Creates a color preview texture showing the actual material colors.
@@ -98,38 +160,38 @@ class TextureGenerator:
         logging.info("Creating color preview texture...")
         landcover_data.load()
         class_values = landcover_data.values
-        
+
         height, width = class_values.shape
         color_texture = np.zeros((height, width, 3), dtype=np.uint8)
-        
+
         for material in self.materials:
             esa_class = material["esa_class"]
             color = material["color_8bit"]
             mask = class_values == esa_class
             color_texture[mask] = color
-        
+
         known_classes = set(mat["esa_class"] for mat in self.materials)
         unknown_mask = ~np.isin(class_values, list(known_classes))
         color_texture[unknown_mask] = (128, 128, 128)
-        
+
         if flip_vertical:
             color_texture = np.flipud(color_texture)
-        
+
         self._save_color_texture(color_texture, output_path)
-        
+
         logging.info(f"Preview texture saved to {output_path}")
         return color_texture
 
     def _save_selection_texture(self, texture: np.ndarray, output_path: Path) -> None:
         """Save selection texture as a grayscale PNG."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        image = Image.fromarray(texture, mode='L')
+        image = Image.fromarray(texture, mode="L")
         image.save(output_path)
 
     def _save_color_texture(self, texture: np.ndarray, output_path: Path) -> None:
         """Save color texture as RGB PNG."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        image = Image.fromarray(texture, mode='RGB')
+        image = Image.fromarray(texture, mode="RGB")
         image.save(output_path)
 
     def get_material_info(self) -> Dict:
@@ -142,7 +204,7 @@ class TextureGenerator:
         return {
             "num_materials": len(self.materials),
             "materials": self.materials,
-            "class_mapping": self.class_to_index
+            "class_mapping": self.class_to_index,
         }
 
     def analyze_landcover_classes(self, landcover_data: xr.DataArray) -> Dict:
@@ -157,30 +219,30 @@ class TextureGenerator:
         """
         landcover_data.load()
         class_values = landcover_data.values
-        
+
         unique_classes, counts = np.unique(class_values, return_counts=True)
         total_pixels = class_values.size
-        
+
         class_stats = {}
         for cls, count in zip(unique_classes, counts):
             percentage = (count / total_pixels) * 100
             material_name = "Unknown"
-            
+
             for material in self.materials:
                 if material["esa_class"] == cls:
                     material_name = material["name"]
                     break
-            
+
             class_stats[int(cls)] = {
                 "name": material_name,
                 "count": int(count),
-                "percentage": round(percentage, 2)
+                "percentage": round(percentage, 2),
             }
-        
+
         return {
             "total_pixels": total_pixels,
             "unique_classes": len(unique_classes),
-            "class_distribution": class_stats
+            "class_distribution": class_stats,
         }
 
     def generate_textures_from_file(
@@ -188,7 +250,7 @@ class TextureGenerator:
         landcover_file_path: Path,
         output_dir: Path,
         base_name: str,
-        create_preview: bool = True
+        create_preview: bool = True,
     ) -> Tuple[Path, Optional[Path]]:
         """
         Complete pipeline: loads land cover from file and generates textures.
@@ -203,63 +265,66 @@ class TextureGenerator:
             Tuple of (selection_texture_path, preview_texture_path).
         """
         logging.info(f"Loading land cover data from {landcover_file_path}")
-        
+
         landcover_dataset = xr.open_zarr(landcover_file_path)
-        landcover_data = landcover_dataset['landcover']
-        
+        landcover_data = landcover_dataset["landcover"]
+
         if isinstance(landcover_data, xr.Dataset):
-            if 'landcover' in landcover_data.data_vars:
-                landcover_data = landcover_data['landcover']
+            if "landcover" in landcover_data.data_vars:
+                landcover_data = landcover_data["landcover"]
             else:
-                landcover_data = landcover_data[list(landcover_data.data_vars.keys())[0]]
-        
+                landcover_data = landcover_data[
+                    list(landcover_data.data_vars.keys())[0]
+                ]
+
         selection_path = output_dir / f"{base_name}_selection.png"
-        preview_path = output_dir / f"{base_name}_preview.png" if create_preview else None
-        
+        preview_path = (
+            output_dir / f"{base_name}_preview.png" if create_preview else None
+        )
+
         self.landcover_to_selection_texture(landcover_data, selection_path)
-        
+
         if create_preview:
             self.create_preview_texture(landcover_data, preview_path)
-        
+
         analysis = self.analyze_landcover_classes(landcover_data)
         logging.info(f"Land cover analysis: {analysis['unique_classes']} classes found")
-        
+
         return selection_path, preview_path
 
     def generate_buffer_mask(
-        self,
-        mask_size: int,
-        target_size: int,
-        output_path: Path
+        self, mask_size: int, target_size: int, output_path: Path
     ) -> Path:
         """
         Generates a square buffer mask texture with center hole for target area.
-        
+
         Args:
             mask_size: Total size of the mask in pixels (buffer area)
             target_size: Size of the center hole in pixels (target area)
             output_path: Path where the mask will be saved
-            
+
         Returns:
             Path to the generated mask file
         """
-        logging.info(f"Generating buffer mask texture {mask_size}x{mask_size} with {target_size}x{target_size} center hole")
-        
+        logging.info(
+            f"Generating buffer mask texture {mask_size}x{mask_size} with {target_size}x{target_size} center hole"
+        )
+
         mask = np.ones((mask_size, mask_size), dtype=np.uint8) * 255
-        
+
         center = mask_size // 2
         half_target = target_size // 2
-        
+
         start_y = center - half_target
         end_y = center + half_target
-        start_x = center - half_target  
+        start_x = center - half_target
         end_x = center + half_target
-        
+
         mask[start_y:end_y, start_x:end_x] = 0
-        
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        image = Image.fromarray(mask, mode='L')
+        image = Image.fromarray(mask, mode="L")
         image.save(output_path)
         logging.info(f"Buffer mask texture saved to {output_path}")
-        
+
         return output_path

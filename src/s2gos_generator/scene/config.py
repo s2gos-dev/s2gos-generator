@@ -1,13 +1,11 @@
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
-import yaml
 import os
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
 
-from s2gos_utils.scene.materials import Material, load_materials, get_landcover_mapping
 from s2gos_utils.scene import SceneDescription
-from s2gos_utils.io.paths import open_file
+from s2gos_utils.scene.materials import Material, get_landcover_mapping, load_materials
 
 
 def _serialize_path(path: Union[Path, str, None]) -> Optional[str]:
@@ -27,6 +25,7 @@ def _deserialize_path(path_str: Optional[str]) -> Optional[Path]:
 @dataclass
 class SceneMetadata:
     """Scene generation metadata and reproducibility parameters."""
+
     center_lat: float
     center_lon: float
     aoi_size_km: float
@@ -34,46 +33,46 @@ class SceneMetadata:
     generation_date: Optional[str] = None
     dem_index_path: Optional[str] = None
     landcover_index_path: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary for serialization."""
         result = {
             "center_lat": self.center_lat,
             "center_lon": self.center_lon,
             "aoi_size_km": self.aoi_size_km,
-            "resolution_m": self.resolution_m
+            "resolution_m": self.resolution_m,
         }
-        
+
         if self.generation_date:
             result["generation_date"] = self.generation_date
-            
+
         if self.dem_index_path or self.landcover_index_path:
             result["generation"] = {}
             if self.dem_index_path:
                 result["generation"]["dem_index_path"] = self.dem_index_path
             if self.landcover_index_path:
                 result["generation"]["landcover_index_path"] = self.landcover_index_path
-            
+
         return result
 
 
 def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
     """Convert to scene description dictionary format.
-    
+
     Args:
         atmosphere_config: AtmosphereConfig object from scene generation configuration
-        
+
     Returns:
         Dictionary format suitable for scene description
     """
     from ..core.config import AtmosphereType
-    
+
     base_dict = {
         "boa": atmosphere_config.boa,
         "toa": atmosphere_config.toa,
-        "type": atmosphere_config.type.value
+        "type": atmosphere_config.type.value,
     }
-    
+
     if atmosphere_config.type == AtmosphereType.MOLECULAR:
         mol_config = atmosphere_config.molecular
         base_dict["molecular_atmosphere"] = {
@@ -82,28 +81,35 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
             "altitude_max": mol_config.thermoprops.altitude_max,
             "altitude_step": mol_config.thermoprops.altitude_step,
             "constituent_scaling": mol_config.thermoprops.constituent_scaling,
-            "absorption_database": mol_config.absorption_database.value if mol_config.absorption_database else None,
+            "absorption_database": mol_config.absorption_database.value
+            if mol_config.absorption_database
+            else None,
             "has_absorption": mol_config.has_absorption,
-            "has_scattering": mol_config.has_scattering
+            "has_scattering": mol_config.has_scattering,
         }
-    
+
     elif atmosphere_config.type == AtmosphereType.HOMOGENEOUS:
         homogeneous_config = atmosphere_config.homogeneous
-        base_dict.update({
-            "aerosol_ot": homogeneous_config.optical_thickness,
-            "aerosol_scale": homogeneous_config.scale_height,
-            "aerosol_ds": homogeneous_config.aerosol_dataset.value,
-            "reference_wavelength": homogeneous_config.reference_wavelength,
-            "has_absorption": homogeneous_config.has_absorption
-        })
-    
+        base_dict.update(
+            {
+                "aerosol_ot": homogeneous_config.optical_thickness,
+                "aerosol_scale": homogeneous_config.scale_height,
+                "aerosol_ds": homogeneous_config.aerosol_dataset.value,
+                "reference_wavelength": homogeneous_config.reference_wavelength,
+                "has_absorption": homogeneous_config.has_absorption,
+            }
+        )
+
     elif atmosphere_config.type == AtmosphereType.HETEROGENEOUS:
         heterogeneous_config = atmosphere_config.heterogeneous
-        base_dict.update({
-            "has_molecular_atmosphere": heterogeneous_config.molecular is not None,
-            "has_particle_layers": heterogeneous_config.particle_layers is not None and len(heterogeneous_config.particle_layers) > 0
-        })
-        
+        base_dict.update(
+            {
+                "has_molecular_atmosphere": heterogeneous_config.molecular is not None,
+                "has_particle_layers": heterogeneous_config.particle_layers is not None
+                and len(heterogeneous_config.particle_layers) > 0,
+            }
+        )
+
         if heterogeneous_config.molecular:
             mol_config = heterogeneous_config.molecular
             base_dict["molecular_atmosphere"] = {
@@ -112,11 +118,13 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                 "altitude_max": mol_config.thermoprops.altitude_max,
                 "altitude_step": mol_config.thermoprops.altitude_step,
                 "constituent_scaling": mol_config.thermoprops.constituent_scaling,
-                "absorption_database": mol_config.absorption_database.value if mol_config.absorption_database else None,
+                "absorption_database": mol_config.absorption_database.value
+                if mol_config.absorption_database
+                else None,
                 "has_absorption": mol_config.has_absorption,
-                "has_scattering": mol_config.has_scattering
+                "has_scattering": mol_config.has_scattering,
             }
-        
+
         if heterogeneous_config.particle_layers:
             base_dict["particle_layers"] = []
             for layer in heterogeneous_config.particle_layers:
@@ -127,9 +135,9 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                     "altitude_top": layer.altitude_top,
                     "distribution_type": layer.distribution.type,
                     "reference_wavelength": layer.reference_wavelength,
-                    "has_absorption": layer.has_absorption
+                    "has_absorption": layer.has_absorption,
                 }
-                
+
                 if layer.distribution.type == "exponential":
                     if layer.distribution.rate is not None:
                         layer_dict["rate"] = layer.distribution.rate
@@ -138,27 +146,38 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                 elif layer.distribution.type == "gaussian":
                     layer_dict["center_altitude"] = layer.distribution.center_altitude
                     layer_dict["width"] = layer.distribution.width
-                
+
                 base_dict["particle_layers"].append(layer_dict)
-    
+
     else:
         raise ValueError(f"Unknown atmosphere type: {atmosphere_config.type.value}")
-    
+
     return base_dict
 
 
 def create_s2gos_scene(
-    scene_name: str, mesh_path: str, texture_path: str,
-    center_lat: float, center_lon: float, aoi_size_km: float, resolution_m: float = 30.0,
-    buffer_mesh_path: str = None, buffer_texture_path: str = None, 
-    buffer_size_km: float = None, output_dir: Path = None, 
-    background_elevation: float = None, buffer_dem_file: str = None, 
-    material_config_path: Path = None, material_overrides: Dict[str, Dict[str, Any]] = None,
-    landcover_mapping_overrides: Dict[str, str] = None, 
-    background_selection_texture: str = None, background_size_km: float = None, **kwargs
+    scene_name: str,
+    mesh_path: str,
+    texture_path: str,
+    center_lat: float,
+    center_lon: float,
+    aoi_size_km: float,
+    resolution_m: float = 30.0,
+    buffer_mesh_path: str = None,
+    buffer_texture_path: str = None,
+    buffer_size_km: float = None,
+    output_dir: Path = None,
+    background_elevation: float = None,
+    buffer_dem_file: str = None,
+    material_config_path: Path = None,
+    material_overrides: Dict[str, Dict[str, Any]] = None,
+    landcover_mapping_overrides: Dict[str, str] = None,
+    background_selection_texture: str = None,
+    background_size_km: float = None,
+    **kwargs,
 ) -> SceneDescription:
     """Create standard S2GOS scene configuration.
-    
+
     Args:
         scene_name: Name of the scene
         mesh_path: Path to the terrain mesh file
@@ -179,11 +198,11 @@ def create_s2gos_scene(
         background_selection_texture: Optional path to background selection texture file
         background_size_km: Optional background size in kilometers
         **kwargs: Additional configuration parameters
-        
+
     Returns:
         SceneDescription instance with loaded materials and configuration
     """
-    
+
     metadata = SceneMetadata(
         center_lat=center_lat,
         center_lon=center_lon,
@@ -191,111 +210,126 @@ def create_s2gos_scene(
         resolution_m=resolution_m,
         generation_date=datetime.now().isoformat(),
         dem_index_path=kwargs.get("dem_index_path"),
-        landcover_index_path=kwargs.get("landcover_index_path")
+        landcover_index_path=kwargs.get("landcover_index_path"),
     )
-    
+
     landcover_ids = {
-        "tree_cover": 0, "shrubland": 1, "grassland": 2, "cropland": 3,
-        "built_up": 4, "bare_sparse_vegetation": 5, "snow_and_ice": 6,
-        "permanent_water_bodies": 7, "herbaceous_wetland": 8, 
-        "mangroves": 9, "moss_and_lichen": 10
+        "tree_cover": 0,
+        "shrubland": 1,
+        "grassland": 2,
+        "cropland": 3,
+        "built_up": 4,
+        "bare_sparse_vegetation": 5,
+        "snow_and_ice": 6,
+        "permanent_water_bodies": 7,
+        "herbaceous_wetland": 8,
+        "mangroves": 9,
+        "moss_and_lichen": 10,
     }
-    
+
     material_mapping = get_landcover_mapping(material_config_path)
-    
+
     if landcover_mapping_overrides:
         material_mapping.update(landcover_mapping_overrides)
-    
+
     material_indices = {}
     for landcover_class_name, texture_index in landcover_ids.items():
         if landcover_class_name in material_mapping:
             material_name = material_mapping[landcover_class_name]
             material_indices[texture_index] = material_name
-    
+
     target = {
         "mesh": mesh_path,
         "selection_texture": texture_path,
-        "size_km": aoi_size_km
+        "size_km": aoi_size_km,
     }
-    
+
     atmosphere_config = kwargs.get("atmosphere_config")
     atmosphere = _convert_atmosphere_config_to_dict(atmosphere_config)
-    
+
     buffer = None
     background = None
     if buffer_mesh_path and buffer_texture_path and buffer_size_km:
         if output_dir is None:
             output_dir = Path(".")
-        
+
         buffer_resolution = int(buffer_size_km * 10)
         target_resolution = int(aoi_size_km * 10)
-        
+
         from ..assets.texture import TextureGenerator
+
         texture_gen = TextureGenerator()
-        mask_path = output_dir / "textures" / f"mask_{scene_name}_{int(buffer_size_km)}km_buffer_{int(aoi_size_km)}km_target.bmp"
+        mask_path = (
+            output_dir
+            / "textures"
+            / f"mask_{scene_name}_{int(buffer_size_km)}km_buffer_{int(aoi_size_km)}km_target.bmp"
+        )
         texture_gen.generate_buffer_mask(
             mask_size=buffer_resolution,
-            target_size=target_resolution, 
-            output_path=mask_path
+            target_size=target_resolution,
+            output_path=mask_path,
         )
-        
+
         buffer = {
             "mesh": buffer_mesh_path,
             "selection_texture": buffer_texture_path,
             "size_km": buffer_size_km,
             "target_size_km": aoi_size_km,
-            "mask_texture": _serialize_path(mask_path.relative_to(output_dir))
+            "mask_texture": _serialize_path(mask_path.relative_to(output_dir)),
         }
-        
+
         bg_elevation = 0.0
         if background_elevation is not None:
             bg_elevation = background_elevation
         elif buffer_dem_file is not None:
             try:
                 import xarray as xr
+
                 if output_dir:
                     dem_path = output_dir / buffer_dem_file
                 else:
                     dem_path = Path(buffer_dem_file)
-                
+
                 if dem_path.exists():
                     dem_data = xr.open_zarr(dem_path)
-                    if 'elevation' in dem_data.data_vars:
-                        bg_elevation = float(dem_data['elevation'].mean().values)
+                    if "elevation" in dem_data.data_vars:
+                        bg_elevation = float(dem_data["elevation"].mean().values)
                     else:
                         var_name = list(dem_data.data_vars.keys())[0]
                         bg_elevation = float(dem_data[var_name].mean().values)
             except Exception as e:
                 import logging
-                logging.warning(f"Could not calculate average elevation from {buffer_dem_file}: {e}")
+
+                logging.warning(
+                    f"Could not calculate average elevation from {buffer_dem_file}: {e}"
+                )
                 bg_elevation = 0.0
-        
+
         if background_selection_texture and background_size_km:
             background = {
                 "selection_texture": background_selection_texture,
                 "elevation": bg_elevation,
-                "size_km": background_size_km
+                "size_km": background_size_km,
             }
         else:
             background = None
-    
+
     materials = load_materials(material_config_path)
-    
+
     if material_overrides:
         for material_id, overrides in material_overrides.items():
             if material_id in materials:
                 current_dict = materials[material_id].to_dict()
                 current_dict.update(overrides)
-                materials[material_id] = Material.from_dict(current_dict, id=material_id)
+                materials[material_id] = Material.from_dict(
+                    current_dict, id=material_id
+                )
             else:
                 materials[material_id] = Material.from_dict(overrides, id=material_id)
-    
+
     scene_description = SceneDescription(
         name=scene_name,
-        location={
-            "lat": center_lat,
-            "lon": center_lon
-        },
+        location={"lat": center_lat, "lon": center_lon},
         resolution_m=resolution_m,
         materials=materials,
         atmosphere=atmosphere,
@@ -308,8 +342,8 @@ def create_s2gos_scene(
             "dem_index_path": metadata.dem_index_path,
             "landcover_index_path": metadata.landcover_index_path,
             "landcover_ids": landcover_ids,
-            "materials_config_path": str(material_config_path)
-        }
+            "materials_config_path": str(material_config_path),
+        },
     )
-    
+
     return scene_description

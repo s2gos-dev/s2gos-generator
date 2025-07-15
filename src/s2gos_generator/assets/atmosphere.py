@@ -31,7 +31,7 @@ def particle_layer(
 ) -> dict:
     """
     Create a particle layer with an exponential density distribution.
-    
+
     Parameters
     ----------
     altitude_bottom : float
@@ -45,7 +45,7 @@ def particle_layer(
         Scaling distance for the exponential density distribution.
     tau_ref : float
         Optical thickness at the reference altitude.
-        
+
     Returns
     -------
     dict
@@ -109,7 +109,7 @@ def create_atmosphere(
     is_polarized : bool, optional
         If True, use specific settings for polarized scenarios. If unset,
         default based on the currently active mode.
-        
+
     Returns
     -------
     dict
@@ -140,11 +140,9 @@ def create_atmosphere(
         tau_ref=aerosol_ot,
         scale_ref=aerosol_scale,
     )
-    aerosol.update({
-        "dataset": aerosol_ds, 
-        "w_ref": 550.0 * ureg.nm, 
-        "has_absorption": True
-    })
+    aerosol.update(
+        {"dataset": aerosol_ds, "w_ref": 550.0 * ureg.nm, "has_absorption": True}
+    )
 
     atmosphere_config = {
         "type": "heterogeneous",
@@ -181,7 +179,7 @@ def create_molecular_atmosphere(
         Enable scattering calculations.
     is_polarized : bool, optional
         If True, use specific settings for polarized scenarios.
-        
+
     Returns
     -------
     dict
@@ -190,20 +188,23 @@ def create_molecular_atmosphere(
     if is_polarized is None:
         is_polarized = eradiate.mode().is_polarized
 
-    altitudes = np.arange(
-        thermoprops_config.altitude_min,
-        thermoprops_config.altitude_max + thermoprops_config.altitude_step,
-        thermoprops_config.altitude_step
-    ) * ureg.m
+    altitudes = (
+        np.arange(
+            thermoprops_config.altitude_min,
+            thermoprops_config.altitude_max + thermoprops_config.altitude_step,
+            thermoprops_config.altitude_step,
+        )
+        * ureg.m
+    )
 
     tp = joseki.make(
         identifier=thermoprops_config.identifier,
         z=altitudes,
     )
-    
+
     if thermoprops_config.constituent_scaling:
         scaling_dict = {
-            species: concentration * ureg.ppm 
+            species: concentration * ureg.ppm
             for species, concentration in thermoprops_config.constituent_scaling.items()
         }
         tp.joseki.rescale_to(scaling_dict)
@@ -215,7 +216,7 @@ def create_molecular_atmosphere(
         "has_scattering": has_scattering,
         "rayleigh_depolarization": "bodhaine" if is_polarized else 0.0,
     }
-    
+
     if absorption_database:
         molecular_config["absorption_data"] = absorption_database
 
@@ -228,14 +229,14 @@ def create_particle_layer_from_config(
 ) -> dict:
     """
     Create a particle layer from enhanced configuration.
-    
+
     Parameters
     ----------
     particle_config : ParticleLayerConfig
         Enhanced particle layer configuration.
     is_polarized : bool, optional
         If True, use specific settings for polarized scenarios.
-        
+
     Returns
     -------
     dict
@@ -261,23 +262,22 @@ def create_particle_layer_from_config(
             distribution_dict["scale"] = particle_config.distribution.scale
         else:
             distribution_dict["rate"] = 5.0
-        
+
         layer_config["distribution"] = distribution_dict
         layer_config["tau_ref"] = particle_config.optical_thickness
 
     elif particle_config.distribution.type == "gaussian":
         normalized_center = (
-            (particle_config.distribution.center_altitude - particle_config.altitude_bottom) /
-            (particle_config.altitude_top - particle_config.altitude_bottom)
-        )
-        normalized_width = (
-            particle_config.distribution.width /
-            (particle_config.altitude_top - particle_config.altitude_bottom)
+            particle_config.distribution.center_altitude
+            - particle_config.altitude_bottom
+        ) / (particle_config.altitude_top - particle_config.altitude_bottom)
+        normalized_width = particle_config.distribution.width / (
+            particle_config.altitude_top - particle_config.altitude_bottom
         )
         layer_config["distribution"] = {
             "type": "gaussian",
             "center": normalized_center,
-            "width": normalized_width
+            "width": normalized_width,
         }
         layer_config["tau_ref"] = particle_config.optical_thickness
 
@@ -304,7 +304,7 @@ def create_heterogeneous_atmosphere(
         List of particle layer configurations.
     is_polarized : bool, optional
         If True, use specific settings for polarized scenarios.
-        
+
     Returns
     -------
     dict
@@ -318,7 +318,9 @@ def create_heterogeneous_atmosphere(
     if molecular_config:
         molecular_atm = create_molecular_atmosphere(
             molecular_config.thermoprops,
-            molecular_config.absorption_database.value if molecular_config.absorption_database else None,
+            molecular_config.absorption_database.value
+            if molecular_config.absorption_database
+            else None,
             molecular_config.has_absorption,
             molecular_config.has_scattering,
             is_polarized,

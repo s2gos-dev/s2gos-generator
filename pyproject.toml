@@ -10,15 +10,13 @@ version = "0.0.1"
 dependencies = [
     "s2gos-utils",
     "geopandas>=0.13.0",
-    "xarray>=2023.1.0", 
+    "xarray>=2023.1.0",
     "pyproj>=3.4.0",
     "shapely>=2.0.0",
     "trimesh>=3.20.0",
     "numpy>=1.24.0",
     "pillow>=9.0.0",
     "pyarrow>=10.0.0",
-    "eradiate[kernel]",
-    "joseki",
     "matplotlib>=3.5.0",
     "rasterio>=1.3.0",
     "rioxarray>=0.13.0",
@@ -38,9 +36,6 @@ platforms = ["linux-64"]
 
 [tool.pixi.dependencies]
 python = ">=3.10,<3.12"
-jupyter = ">=1.1.1,<2"
-jupyterlab = ">=4.4.3,<5"
-ipykernel = ">=6.29.5,<7"
 
 [tool.pixi.pypi-dependencies]
 s2gos_generator = { path = ".", editable = true }
@@ -51,7 +46,11 @@ lab = "jupyter lab"
 
 [project.optional-dependencies]
 test = ["pytest"]
-dev = []
+dev = [
+    "jupyter>=1.1.1,<2",
+    "jupyterlab>=4.4.3,<5",
+    "ipykernel>=6.29.5,<7",
+]
 docs = ["mkdocs"]
 
 [tool.pixi.environments]
@@ -68,4 +67,3 @@ ignore = ["E501", "F821"]
 isort = { relative-imports-order = "closest-to-furthest" }
 per-file-ignores = { "*.ipynb" = ["E402"] }
 select = ["I", "F", "E"]
-

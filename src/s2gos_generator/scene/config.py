@@ -60,21 +60,20 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
     """Convert to scene description dictionary format.
 
     Args:
-        atmosphere_config: AtmosphereConfig object from scene generation configuration
+        atmosphere_config: Atmosphere config object from scene generation configuration
 
     Returns:
         Dictionary format suitable for scene description
     """
-    from ..core.config import AtmosphereType
-
+    
     base_dict = {
         "boa": atmosphere_config.boa,
         "toa": atmosphere_config.toa,
-        "type": atmosphere_config.type.value,
+        "type": atmosphere_config.details.type,
     }
 
-    if atmosphere_config.type == AtmosphereType.MOLECULAR:
-        mol_config = atmosphere_config.molecular
+    if atmosphere_config.details.type == "molecular":
+        mol_config = atmosphere_config.details
         base_dict["molecular_atmosphere"] = {
             "thermoprops_identifier": mol_config.thermoprops.identifier,
             "altitude_min": mol_config.thermoprops.altitude_min,
@@ -88,8 +87,8 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
             "has_scattering": mol_config.has_scattering,
         }
 
-    elif atmosphere_config.type == AtmosphereType.HOMOGENEOUS:
-        homogeneous_config = atmosphere_config.homogeneous
+    elif atmosphere_config.details.type == "homogeneous":
+        homogeneous_config = atmosphere_config.details
         base_dict.update(
             {
                 "aerosol_ot": homogeneous_config.optical_thickness,
@@ -100,8 +99,8 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
             }
         )
 
-    elif atmosphere_config.type == AtmosphereType.HETEROGENEOUS:
-        heterogeneous_config = atmosphere_config.heterogeneous
+    elif atmosphere_config.details.type == "heterogeneous":
+        heterogeneous_config = atmosphere_config.details
         base_dict.update(
             {
                 "has_molecular_atmosphere": heterogeneous_config.molecular is not None,
@@ -150,7 +149,7 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                 base_dict["particle_layers"].append(layer_dict)
 
     else:
-        raise ValueError(f"Unknown atmosphere type: {atmosphere_config.type.value}")
+        raise ValueError(f"Unknown atmosphere type: {atmosphere_config.details.type}")
 
     return base_dict
 

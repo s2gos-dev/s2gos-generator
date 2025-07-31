@@ -1,31 +1,100 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import importlib.resources
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Annotated, Any, Dict, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Discriminator, Field, Tag, field_validator, model_validator
 from s2gos_utils.io.paths import exists, open_file, read_yaml
+
+def _is_absolute_or_remote_path(path_str: str) -> bool:
+    """Check if path is absolute or remote URL."""
+    return path_str.startswith(("/", "s3://", "gcs://", "azure://", "http://", "https://"))
+
+
+def _parse_version(version_str: str) -> tuple[int, int, int]:
+    """Parse semantic version string into (major, minor, patch) tuple."""
+    try:
+        parts = version_str.split(".")
+        if len(parts) != 3:
+            raise ValueError("Version must have exactly 3 parts (major.minor.patch)")
+        return tuple(int(part) for part in parts)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Invalid version format '{version_str}': {e}")
+
+
+def _check_config_version_compatibility(config_version: str, current_version: str = "1.0.0") -> None:
+    """Check if config version is compatible with current code version.
+    
+    Args:
+        config_version: Version from loaded config
+        current_version: Current code version (default: "1.0.0")
+        
+    Raises:
+        ValueError: If major version mismatch (incompatible)
+        
+    Logs:
+        Warning: If minor/patch version differences exist
+    """
+    try:
+        config_major, config_minor, config_patch = _parse_version(config_version)
+        current_major, current_minor, current_patch = _parse_version(current_version)
+    except ValueError as e:
+        logging.warning(f"Could not parse version numbers: {e}")
+        return
+    
+    # Major version mismatch is incompatible
+    if config_major != current_major:
+        raise ValueError(
+            f"Incompatible config version: config uses v{config_version} "
+            f"but current code expects v{current_major}.x.x. "
+            f"Please update your configuration or use compatible code version."
+        )
+    
+    # Minor/patch differences get warnings
+    if config_minor != current_minor or config_patch != current_patch:
+        if config_minor > current_minor or (config_minor == current_minor and config_patch > current_patch):
+            logging.warning(
+                f"Config version v{config_version} is newer than current code v{current_version}. "
+                f"Some features may not work as expected."
+            )
+        else:
+            logging.warning(
+                f"Config version v{config_version} is older than current code v{current_version}. "
+                f"Consider updating your configuration."
+            )
 
 
 def load_defaults() -> Dict[str, Any]:
-    """Load default paths from defaults.yaml file."""
-    defaults_path = Path(__file__).parent.parent.parent.parent / "defaults.yaml"
+    """Load default paths from defaults.yaml file.
+    
+    The defaults file location can be overridden using the S2GOS_DEFAULTS_PATH
+    environment variable. If not set, uses the package's defaults.yaml file.
+    """
+    package_root = importlib.resources.files('s2gos_generator')
+    defaults_path = package_root / "defaults.yaml"
 
+    env_path = os.getenv("S2GOS_GEN_DEFAULTS_PATH")
+    if env_path:
+        defaults_path = Path(env_path)
+        if not exists(defaults_path):
+            return {}
+        return read_yaml(defaults_path)
+    
     if not exists(defaults_path):
         return {}
-
+    
     defaults = read_yaml(defaults_path)
-
-    generator_root = Path(__file__).parent.parent.parent.parent
+    
     for key, value in defaults.items():
-        if isinstance(value, str) and not value.startswith(
-            ("/", "s3://", "gcs://", "azure://")
-        ):
-            defaults[key] = generator_root / value
-
+        if isinstance(value, str) and not _is_absolute_or_remote_path(value):
+            defaults[key] = package_root / value
+    
     return defaults
 
 
@@ -96,30 +165,24 @@ class DataSources(BaseModel):
         ..., description="Path to custom material configuration JSON"
     )
 
-    @field_validator("dem_index_path", "landcover_index_path", "material_config_path")
+    @field_validator(
+        "dem_index_path",
+        "landcover_index_path",
+        "material_config_path",
+        "dem_root_dir",
+        "landcover_root_dir",
+    )
     @classmethod
-    def validate_files(cls, v):
-        """Validate that files exist for local paths."""
+    def validate_path_exists(cls, v):
+        """Validate that local files or directories exist."""
         path_str = str(v)
         if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
             return v
+        
         path = Path(v)
         if not path.exists():
-            raise ValueError(f"File does not exist: {v}")
+            raise ValueError(f"Local path does not exist: {v}")
         return v
-
-    @field_validator("dem_root_dir", "landcover_root_dir")
-    @classmethod
-    def validate_dirs(cls, v):
-        """Validate that directories exist for local paths."""
-        path_str = str(v)
-        if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
-            return v
-        path = Path(v)
-        if not path.exists():
-            raise ValueError(f"Directory does not exist: {v}")
-        return v
-
 
 class ProcessingOptions(BaseModel):
     """Processing options for scene generation."""
@@ -159,7 +222,7 @@ class ThermophysicalConfig(BaseModel):
 
 class MolecularAtmosphereConfig(BaseModel):
     """Configuration for molecular atmosphere using Eradiate's MolecularAtmosphere."""
-
+    type: Literal["molecular"] = "molecular"
     thermoprops: ThermophysicalConfig = Field(
         default_factory=ThermophysicalConfig,
         description="Thermophysical properties configuration",
@@ -173,7 +236,7 @@ class MolecularAtmosphereConfig(BaseModel):
 
 class HomogeneousAtmosphereConfig(BaseModel):
     """Configuration for homogeneous atmosphere with uniform optical properties."""
-
+    type: Literal["homogeneous"] = "homogeneous"
     aerosol_dataset: AerosolDataset = Field(
         AerosolDataset.SIXSV_CONTINENTAL, description="Aerosol dataset to use"
     )
@@ -191,7 +254,7 @@ class HomogeneousAtmosphereConfig(BaseModel):
 
 class HeterogeneousAtmosphereConfig(BaseModel):
     """Configuration for heterogeneous atmosphere with molecular background and particle layers."""
-
+    type: Literal["heterogeneous"] = "heterogeneous"
     molecular: Optional[MolecularAtmosphereConfig] = Field(
         None, description="Molecular atmosphere configuration"
     )
@@ -208,6 +271,12 @@ class HeterogeneousAtmosphereConfig(BaseModel):
             )
         return self
 
+
+AtmosphereTypeConfig = Union[
+    MolecularAtmosphereConfig,
+    HomogeneousAtmosphereConfig,
+    HeterogeneousAtmosphereConfig,
+]
 
 class ParticleDistribution(BaseModel):
     """Base class for particle distribution configurations."""
@@ -276,19 +345,8 @@ class ParticleLayerConfig(BaseModel):
         return self
 
 
-AtmosphereTypeConfig = Union[
-    MolecularAtmosphereConfig,
-    HomogeneousAtmosphereConfig,
-    HeterogeneousAtmosphereConfig,
-]
-
-
 class AtmosphereConfig(BaseModel):
     """Comprehensive atmosphere configuration supporting multiple types."""
-
-    type: AtmosphereType = Field(
-        AtmosphereType.HOMOGENEOUS, description="Atmosphere type"
-    )
 
     boa: float = Field(
         0.0, ge=0.0, description="Bottom of atmosphere altitude in meters"
@@ -297,16 +355,9 @@ class AtmosphereConfig(BaseModel):
         40000.0, gt=0.0, description="Top of atmosphere altitude in meters"
     )
 
-    # Type-specific configurations
-    molecular: Optional[MolecularAtmosphereConfig] = Field(
-        None, description="Molecular atmosphere configuration"
-    )
-    homogeneous: Optional[HomogeneousAtmosphereConfig] = Field(
-        None, description="Homogeneous atmosphere configuration"
-    )
-    heterogeneous: Optional[HeterogeneousAtmosphereConfig] = Field(
-        None, description="Heterogeneous atmosphere configuration"
-    )
+    details: Annotated[
+        AtmosphereTypeConfig, Field(..., discriminator="type")
+    ]
 
     @model_validator(mode="after")
     def validate_atmosphere_config(self):
@@ -315,52 +366,13 @@ class AtmosphereConfig(BaseModel):
             raise ValueError(
                 "Top of atmosphere must be higher than bottom of atmosphere"
             )
-
-        # Validate type-specific configurations
-        if self.type == AtmosphereType.MOLECULAR:
-            if not self.molecular:
-                raise ValueError(
-                    "Molecular atmosphere type requires 'molecular' configuration"
-                )
-        elif self.type == AtmosphereType.HOMOGENEOUS:
-            if not self.homogeneous:
-                raise ValueError(
-                    "Homogeneous atmosphere type requires 'homogeneous' configuration"
-                )
-        elif self.type == AtmosphereType.HETEROGENEOUS:
-            if not self.heterogeneous:
-                raise ValueError(
-                    "Heterogeneous atmosphere type requires 'heterogeneous' configuration"
-                )
-
         return self
-
-    def get_config_for_type(self) -> AtmosphereTypeConfig:
-        """Get the appropriate configuration object for the current atmosphere type."""
-        if self.type == AtmosphereType.MOLECULAR:
-            if self.molecular:
-                return self.molecular
-            else:
-                raise ValueError("No molecular configuration available")
-        elif self.type == AtmosphereType.HOMOGENEOUS:
-            if self.homogeneous:
-                return self.homogeneous
-            else:
-                raise ValueError("No homogeneous configuration available")
-        elif self.type == AtmosphereType.HETEROGENEOUS:
-            if self.heterogeneous:
-                return self.heterogeneous
-            else:
-                raise ValueError("No heterogeneous configuration available")
-        else:
-            raise ValueError(f"Unknown atmosphere type: {self.type}")
 
 
 def _default_atmosphere_config() -> "AtmosphereConfig":
     """Create a default atmosphere configuration matching eradiate defaults."""
     return AtmosphereConfig(
-        type=AtmosphereType.MOLECULAR,
-        molecular=MolecularAtmosphereConfig(
+        details=MolecularAtmosphereConfig(
             thermoprops=ThermophysicalConfig(identifier="afgl_1986-us_standard"),
             absorption_database=None,  # No absorption by default
             has_absorption=False,  # Match eradiate sigma_a=0.0 default
@@ -372,7 +384,6 @@ def _default_atmosphere_config() -> "AtmosphereConfig":
 class BufferConfig(BaseModel):
     """Combined buffer and background configuration."""
 
-    enabled: bool = Field(False, description="Enable buffer/background system")
     buffer_size_km: float = Field(..., gt=0.0, description="Buffer size in kilometers")
     buffer_resolution_m: float = Field(
         100.0, gt=0.0, description="Buffer resolution in meters"
@@ -389,16 +400,7 @@ class BufferConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_buffer_config(self):
-        """Validate buffer configuration when enabled."""
-        if not self.enabled:
-            return self
-
-        if self.buffer_size_km <= 0:
-            raise ValueError("Buffer size must be positive when buffer is enabled")
-
-        if self.background_size_km <= 0:
-            raise ValueError("Background size must be positive when buffer is enabled")
-
+        """Validate buffer configuration."""
         if self.background_resolution_m < self.buffer_resolution_m:
             raise ValueError(
                 "Background resolution must be equal to or lower than buffer resolution"
@@ -414,6 +416,9 @@ class SceneGenConfig(BaseModel):
     Provides a modern, validated, and flexible configuration system for scene generation.
     """
 
+    config_version: str = Field(
+        "1.0.0", description="Configuration schema version"
+    )
     scene_name: str = Field(
         ..., min_length=1, description="Scene name (used for output files)"
     )
@@ -453,7 +458,7 @@ class SceneGenConfig(BaseModel):
     @model_validator(mode="after")
     def validate_scene_config(self):
         """Validate complete scene configuration."""
-        if self.buffer and self.buffer.enabled:
+        if self.buffer:
             if self.buffer.buffer_size_km <= self.location.aoi_size_km:
                 raise ValueError("Buffer size must be larger than AOI size")
 
@@ -473,9 +478,13 @@ class SceneGenConfig(BaseModel):
 
     @classmethod
     def from_json(cls, path: Path) -> "SceneGenConfig":
-        """Load from JSON file."""
+        """Load from JSON file with version compatibility checking."""
         with open_file(path, "r") as f:
             data = json.load(f)
+        
+        config_version = data.get("config_version", "1.0.0")
+        _check_config_version_compatibility(config_version)
+        
         return cls(**data)
 
     def enable_buffer_system(
@@ -488,7 +497,6 @@ class SceneGenConfig(BaseModel):
     ):
         """Enable and configure buffer/background system."""
         self.buffer = BufferConfig(
-            enabled=True,
             buffer_size_km=buffer_size_km,
             buffer_resolution_m=buffer_resolution_m,
             background_elevation=background_elevation,
@@ -513,19 +521,13 @@ class SceneGenConfig(BaseModel):
             scale_height=scale_height,
         )
         self.atmosphere = AtmosphereConfig(
-            type=AtmosphereType.HOMOGENEOUS,
-            boa=self.atmosphere.boa,
-            toa=self.atmosphere.toa,
-            homogeneous=homogeneous_config,
+            details=homogeneous_config,
         )
 
     def set_atmosphere_molecular(self, molecular_config: MolecularAtmosphereConfig):
         """Set atmosphere using molecular configuration."""
         self.atmosphere = AtmosphereConfig(
-            type=AtmosphereType.MOLECULAR,
-            boa=self.atmosphere.boa,
-            toa=self.atmosphere.toa,
-            molecular=molecular_config,
+            details=molecular_config,
         )
 
     def set_atmosphere_heterogeneous(
@@ -538,10 +540,7 @@ class SceneGenConfig(BaseModel):
             molecular=molecular_config, particle_layers=particle_layers
         )
         self.atmosphere = AtmosphereConfig(
-            type=AtmosphereType.HETEROGENEOUS,
-            boa=self.atmosphere.boa,
-            toa=self.atmosphere.toa,
-            heterogeneous=heterogeneous_config,
+            details=heterogeneous_config,
         )
 
     def validate_configuration(self) -> list[str]:
@@ -558,7 +557,7 @@ class SceneGenConfig(BaseModel):
                 f"Landcover index file not found: {self.data_sources.landcover_index_path}"
             )
 
-        if self.buffer and self.buffer.enabled:
+        if self.buffer:
             if self.buffer.buffer_size_km <= self.location.aoi_size_km:
                 errors.append("Buffer size must be larger than AOI size")
 
@@ -587,7 +586,7 @@ class SceneGenConfig(BaseModel):
     @property
     def has_buffer(self) -> bool:
         """Check if buffer/background system is enabled."""
-        return self.buffer is not None and self.buffer.enabled
+        return self.buffer is not None
 
 
 def create_scene_config(
@@ -603,8 +602,28 @@ def create_scene_config(
     landcover_index_path: Optional[Union[Path, str]] = None,
     landcover_root_dir: Optional[Union[Path, str]] = None,
     material_config_path: Optional[Union[Path, str]] = None,
+    atmosphere: Optional[AtmosphereConfig] = None,
 ) -> SceneGenConfig:
-    """Create a scene configuration using defaults with optional overrides."""
+    """Create a scene configuration using defaults with optional overrides.
+    
+    Args:
+        scene_name: Scene name (used for output files)
+        center_lat: Center latitude in degrees
+        center_lon: Center longitude in degrees
+        aoi_size_km: Area of interest size in kilometers
+        output_dir: Output directory for generated scene
+        target_resolution_m: Target resolution in meters (default: 30.0)
+        description: Optional scene description
+        dem_index_path: Optional path to DEM index file (uses default if not provided)
+        dem_root_dir: Optional root directory for DEM data (uses default if not provided)
+        landcover_index_path: Optional path to landcover index file (uses default if not provided)
+        landcover_root_dir: Optional root directory for landcover data (uses default if not provided)
+        material_config_path: Optional path to material configuration JSON (uses default if not provided)
+        atmosphere: Optional atmosphere configuration (uses default molecular atmosphere if not provided)
+        
+    Returns:
+        SceneGenConfig: Configured scene generation configuration
+    """
 
     defaults = load_defaults()
 
@@ -673,6 +692,7 @@ def create_scene_config(
         ),
         output_dir=output_dir,
         processing=ProcessingOptions(target_resolution_m=target_resolution_m),
+        atmosphere=atmosphere or _default_atmosphere_config(),
     )
 
 
@@ -684,10 +704,9 @@ def create_clear_atmosphere() -> AtmosphereConfig:
         scale_height=1000.0,
     )
     return AtmosphereConfig(
-        type=AtmosphereType.HOMOGENEOUS,
         boa=0.0,
         toa=40000.0,
-        homogeneous=homogeneous_config,
+        details=homogeneous_config,
     )
 
 
@@ -699,10 +718,9 @@ def create_hazy_atmosphere() -> AtmosphereConfig:
         scale_height=1000.0,
     )
     return AtmosphereConfig(
-        type=AtmosphereType.HOMOGENEOUS,
         boa=0.0,
         toa=40000.0,
-        homogeneous=homogeneous_config,
+        details=homogeneous_config,
     )
 
 
@@ -714,10 +732,9 @@ def create_maritime_atmosphere() -> AtmosphereConfig:
         scale_height=1000.0,
     )
     return AtmosphereConfig(
-        type=AtmosphereType.HOMOGENEOUS,
         boa=0.0,
         toa=40000.0,
-        homogeneous=homogeneous_config,
+        details=homogeneous_config,
     )
 
 
@@ -749,10 +766,9 @@ def create_molecular_atmosphere_config(
     )
 
     return AtmosphereConfig(
-        type=AtmosphereType.MOLECULAR,
         boa=0.0,
         toa=altitude_max,
-        molecular=molecular_config,
+        details=molecular_config,
     )
 
 
@@ -812,8 +828,7 @@ def create_heterogeneous_atmosphere_config(
         molecular=molecular_config, particle_layers=particle_layers
     )
     return AtmosphereConfig(
-        type=AtmosphereType.HETEROGENEOUS,
         boa=0.0,
         toa=toa,
-        heterogeneous=heterogeneous_config,
+        details=heterogeneous_config,
     )

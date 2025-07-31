@@ -86,7 +86,7 @@ def simple_scene_generation_example():
     print(f"  Resolution: {config.processing.target_resolution_m} m")
     print(f"  Buffer: {config.buffer.buffer_size_km} km at {config.buffer.buffer_resolution_m} m resolution")
     print(f"  Background: at {config.buffer.background_elevation} m elevation, {config.buffer.background_resolution_m} m resolution")
-    print(f"  Atmosphere: {config.atmosphere.type.value}")
+    print(f"  Atmosphere: {config.atmosphere.details.type}")
     print(f"  Output: {config.scene_output_dir}")
     
     try:

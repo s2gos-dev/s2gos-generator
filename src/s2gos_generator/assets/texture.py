@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+from upath import UPath
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -99,7 +99,7 @@ class TextureGenerator:
     def landcover_to_selection_texture(
         self,
         landcover_data: xr.DataArray,
-        output_path: Path,
+        output_path: UPath,
         flip_vertical: bool = False,
         default_material_index: int = 7,
     ) -> np.ndarray:
@@ -108,7 +108,7 @@ class TextureGenerator:
 
         Args:
             landcover_data: xarray DataArray containing land cover class values.
-            output_path: Path where the texture PNG will be saved.
+            output_path: UPath where the texture PNG will be saved.
             flip_vertical: If True, flips the texture vertically (for Mitsuba compatibility).
             default_material_index: Material index to use for unknown classes.
 
@@ -143,7 +143,7 @@ class TextureGenerator:
     def create_preview_texture(
         self,
         landcover_data: xr.DataArray,
-        output_path: Path,
+        output_path: UPath,
         flip_vertical: bool = True,
     ) -> np.ndarray:
         """
@@ -151,7 +151,7 @@ class TextureGenerator:
 
         Args:
             landcover_data: xarray DataArray containing land cover class values.
-            output_path: Path where the preview PNG will be saved.
+            output_path: UPath where the preview PNG will be saved.
             flip_vertical: If True, flips the texture vertically.
 
         Returns:
@@ -182,15 +182,17 @@ class TextureGenerator:
         logging.info(f"Preview texture saved to {output_path}")
         return color_texture
 
-    def _save_selection_texture(self, texture: np.ndarray, output_path: Path) -> None:
+    def _save_selection_texture(self, texture: np.ndarray, output_path: UPath) -> None:
         """Save selection texture as a grayscale PNG."""
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        from s2gos_utils.io.paths import mkdir
+        mkdir(output_path.parent)
         image = Image.fromarray(texture, mode="L")
         image.save(output_path)
 
-    def _save_color_texture(self, texture: np.ndarray, output_path: Path) -> None:
+    def _save_color_texture(self, texture: np.ndarray, output_path: UPath) -> None:
         """Save color texture as RGB PNG."""
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        from s2gos_utils.io.paths import mkdir
+        mkdir(output_path.parent)
         image = Image.fromarray(texture, mode="RGB")
         image.save(output_path)
 
@@ -247,16 +249,16 @@ class TextureGenerator:
 
     def generate_textures_from_file(
         self,
-        landcover_file_path: Path,
-        output_dir: Path,
+        landcover_file_path: UPath,
+        output_dir: UPath,
         base_name: str,
         create_preview: bool = True,
-    ) -> Tuple[Path, Optional[Path]]:
+    ) -> Tuple[UPath, Optional[UPath]]:
         """
         Complete pipeline: loads land cover from file and generates textures.
 
         Args:
-            landcover_file_path: Path to the land cover NetCDF file.
+            landcover_file_path: UPath to the land cover NetCDF file.
             output_dir: Directory where textures will be saved.
             base_name: Base name for output files.
             create_preview: Whether to create a color preview texture.
@@ -293,15 +295,15 @@ class TextureGenerator:
         return selection_path, preview_path
 
     def generate_buffer_mask(
-        self, mask_size: int, target_size: int, output_path: Path
-    ) -> Path:
+        self, mask_size: int, target_size: int, output_path: UPath
+    ) -> UPath:
         """
         Generates a square buffer mask texture with center hole for target area.
 
         Args:
             mask_size: Total size of the mask in pixels (buffer area)
             target_size: Size of the center hole in pixels (target area)
-            output_path: Path where the mask will be saved
+            output_path: UPath where the mask will be saved
 
         Returns:
             Path to the generated mask file
@@ -322,7 +324,8 @@ class TextureGenerator:
 
         mask[start_y:end_y, start_x:end_x] = 0
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        from s2gos_utils.io.paths import mkdir
+        mkdir(output_path.parent)
         image = Image.fromarray(mask, mode="L")
         image.save(output_path)
         logging.info(f"Buffer mask texture saved to {output_path}")

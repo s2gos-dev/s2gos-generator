@@ -1,8 +1,9 @@
 import logging
-from pathlib import Path
+from upath import UPath
 from typing import Optional, Union
 
 import xarray as xr
+from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
 
 from .base_processor import BaseTileProcessor
@@ -12,7 +13,7 @@ class LandCoverProcessor(BaseTileProcessor):
     """Finds, merges, and processes ESA WorldCover land cover tiles for a given AOI."""
 
     def __init__(
-        self, index_path: Union[Path, str], landcover_root_dir: Union[Path, str]
+        self, index_path: PathLike, landcover_root_dir: PathLike
     ):
         """Initialize the land cover processor."""
         super().__init__(index_path, landcover_root_dir, "land cover")
@@ -89,7 +90,7 @@ class LandCoverProcessor(BaseTileProcessor):
     def generate_landcover(
         self,
         aoi_polygon: Polygon,
-        output_path: Path,
+        output_path: UPath,
         target_resolution_m: Optional[float] = None,
         center_lat: Optional[float] = None,
         center_lon: Optional[float] = None,

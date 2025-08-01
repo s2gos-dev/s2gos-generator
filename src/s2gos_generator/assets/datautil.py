@@ -1,47 +1,11 @@
-from pathlib import Path
+from upath import UPath
 from typing import Optional
 
 import numpy as np
 import xarray as xr
 from pyproj import Proj
 
-from ..core.exceptions import DataNotFoundError, RegridError
-
-
-def validate_data_paths(
-    dem_index_path: Path,
-    landcover_index_path: Path,
-    dem_root_dir: Path,
-    landcover_root_dir: Path,
-) -> bool:
-    """Validate that required data paths exist and are accessible.
-
-    Raises:
-        DataNotFoundError: If required paths don't exist or are inaccessible
-    """
-    paths_to_check = [
-        dem_index_path,
-        landcover_index_path,
-        dem_root_dir,
-        landcover_root_dir,
-    ]
-
-    for path in paths_to_check:
-        if not path.exists():
-            raise DataNotFoundError(f"Required path does not exist: {path}", str(path))
-
-    if not dem_root_dir.is_dir():
-        raise DataNotFoundError(
-            f"DEM root is not a directory: {dem_root_dir}", str(dem_root_dir)
-        )
-
-    if not landcover_root_dir.is_dir():
-        raise DataNotFoundError(
-            f"Landcover root is not a directory: {landcover_root_dir}",
-            str(landcover_root_dir),
-        )
-
-    return True
+from ..core.exceptions import RegridError
 
 
 def regrid_to_projection(

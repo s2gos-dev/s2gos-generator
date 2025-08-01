@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from pathlib import Path
+from upath import UPath
 from typing import List, Optional, Union
 
 import geopandas as gpd
@@ -10,6 +10,7 @@ import psutil
 import rioxarray as rxr
 import xarray as xr
 from s2gos_utils.io.paths import exists, open_dataarray, read_geofeather
+from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
 
 from .datautil import regrid_to_projection
@@ -20,8 +21,8 @@ class BaseTileProcessor(ABC):
 
     def __init__(
         self,
-        index_path: Union[Path, str],
-        data_root_dir: Union[Path, str],
+        index_path: PathLike,
+        data_root_dir: PathLike,
         data_description: str,
     ):
         """Initialize the base tile processor.
@@ -40,7 +41,7 @@ class BaseTileProcessor(ABC):
 
         logging.info(f"Loading {data_description} index file...")
         self.index_gdf = read_geofeather(index_path)
-        self.data_root_dir = Path(data_root_dir)
+        self.data_root_dir = UPath(data_root_dir)
         self.data_description = data_description
         logging.info(f"{self.__class__.__name__} initialized successfully.")
 
@@ -80,7 +81,7 @@ class BaseTileProcessor(ABC):
         """Whether to use context manager when opening data arrays."""
         pass
 
-    def _find_intersecting_tiles(self, aoi_polygon: Polygon) -> List[Path]:
+    def _find_intersecting_tiles(self, aoi_polygon: Polygon) -> List[UPath]:
         """Find data tiles that intersect with the AOI.
 
         Args:
@@ -130,7 +131,7 @@ class BaseTileProcessor(ABC):
 
     def _merge_tiles(
         self,
-        tile_paths: List[Path],
+        tile_paths: List[UPath],
         aoi_polygon: Optional[Polygon] = None,
         fillna_value: Optional[Union[float, int]] = None,
     ) -> xr.Dataset:
@@ -241,9 +242,10 @@ class BaseTileProcessor(ABC):
             data_variable=self.data_variable_name,
         )
 
-    def _save_dataset(self, dataset: xr.Dataset, output_path: Path) -> None:
+    def _save_dataset(self, dataset: xr.Dataset, output_path: UPath) -> None:
         """Save dataset to zarr format with proper directory creation."""
         logging.info(f"Saving processed {self.data_description} to '{output_path}'")
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        from s2gos_utils.io.paths import mkdir
+        mkdir(output_path.parent)
         dataset.to_zarr(output_path, mode="w")
         logging.info(f"{self.data_description} generation complete.")

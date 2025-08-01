@@ -1,5 +1,4 @@
 from .base_processor import BaseTileProcessor
-from .datautil import validate_data_paths
 from .dem import DEMProcessor
 from .landcover import LandCoverProcessor
 from .mesh import MeshGenerator
@@ -11,5 +10,4 @@ __all__ = [
     "LandCoverProcessor",
     "MeshGenerator",
     "TextureGenerator",
-    "validate_data_paths",
 ]

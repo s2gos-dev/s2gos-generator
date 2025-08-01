@@ -1,6 +1,6 @@
 # Default paths for S2GOS Generator
-dem_index_path: "data/dem_index.feather"
+dem_index_path: "dem_index.feather"
 dem_root_dir: "/media/DATA/DEM"
-landcover_index_path: "data/landcover_index.feather"
+landcover_index_path: "landcover_index.feather"
 landcover_root_dir: "/home/gonzalezm/Data"
-material_config_path: "data/materials.json"
+material_config_path: "materials.json"

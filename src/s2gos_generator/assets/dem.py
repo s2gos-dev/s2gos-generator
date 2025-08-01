@@ -1,8 +1,9 @@
 import logging
-from pathlib import Path
+from upath import UPath
 from typing import Optional, Union
 
 import xarray as xr
+from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
 
 from .base_processor import BaseTileProcessor
@@ -11,7 +12,7 @@ from .base_processor import BaseTileProcessor
 class DEMProcessor(BaseTileProcessor):
     """Finds, merges, and processes Copernicus GLO-30 DEM tiles for a given AOI."""
 
-    def __init__(self, index_path: Union[Path, str], dem_root_dir: Union[Path, str]):
+    def __init__(self, index_path: PathLike, dem_root_dir: PathLike):
         """Initialize the DEM processor."""
         super().__init__(index_path, dem_root_dir, "DEM")
 
@@ -48,7 +49,7 @@ class DEMProcessor(BaseTileProcessor):
     def generate_dem(
         self,
         aoi_polygon: Polygon,
-        output_path: Path,
+        output_path: UPath,
         fillna_value: Optional[float] = 0.0,
         target_resolution_m: Optional[float] = None,
         center_lat: Optional[float] = None,

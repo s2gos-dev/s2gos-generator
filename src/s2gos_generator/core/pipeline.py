@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+from upath import UPath
 from typing import Optional, Tuple
 
 import xarray as xr
@@ -111,18 +111,21 @@ class SceneGenerationPipeline:
 
     def _setup_output_directories(self) -> None:
         """Create the output directory structure."""
-        self.output_dir = self.config.scene_output_dir
-        self.data_dir = self.output_dir / "data"
-        self.meshes_dir = self.output_dir / "meshes"
-        self.textures_dir = self.output_dir / "textures"
+        # Use config properties instead of manual calculation
+        self.output_dir = UPath(self.config.scene_output_dir)
+        self.data_dir = UPath(self.config.data_dir)
+        self.meshes_dir = UPath(self.config.meshes_dir)
+        self.textures_dir = UPath(self.config.textures_dir)
 
+        from s2gos_utils.io.paths import mkdir
+        
         for directory in [
             self.output_dir,
             self.data_dir,
             self.meshes_dir,
             self.textures_dir,
         ]:
-            directory.mkdir(parents=True, exist_ok=True)
+            mkdir(directory)
 
     def generate_aoi(self) -> None:
         """Generate the Area of Interest polygon."""
@@ -135,7 +138,7 @@ class SceneGenerationPipeline:
             f"Created AOI polygon: {self.aoi_size_km}km x {self.aoi_size_km}km"
         )
 
-    def process_dem(self) -> Path:
+    def process_dem(self) -> UPath:
         """Process DEM data for the AOI."""
         logging.info("=== Processing DEM Data ===")
 
@@ -156,7 +159,7 @@ class SceneGenerationPipeline:
         logging.info(f"DEM processing complete: {dem_output_path}")
         return dem_output_path
 
-    def process_landcover(self) -> Path:
+    def process_landcover(self) -> UPath:
         """Process land cover data for the AOI."""
         logging.info("=== Processing Land Cover Data ===")
 
@@ -178,7 +181,7 @@ class SceneGenerationPipeline:
         logging.info(f"Land cover processing complete: {landcover_output_path}")
         return landcover_output_path
 
-    def generate_mesh(self, dem_file_path: Path) -> Path:
+    def generate_mesh(self, dem_file_path: UPath) -> UPath:
         """Generate 3D mesh from DEM data."""
         logging.info("=== Generating 3D Mesh ===")
 
@@ -198,7 +201,7 @@ class SceneGenerationPipeline:
 
         return mesh_path
 
-    def generate_textures(self, landcover_file_path: Path) -> Tuple[Path, Path]:
+    def generate_textures(self, landcover_file_path: UPath) -> Tuple[UPath, UPath]:
         """Generate texture maps from land cover data."""
         logging.info("=== Generating Textures ===")
 
@@ -228,7 +231,7 @@ class SceneGenerationPipeline:
 
         return selection_texture_path, preview_texture_path
 
-    def process_buffer_dem(self) -> Optional[Path]:
+    def process_buffer_dem(self) -> Optional[UPath]:
         """Process DEM data for buffer area (if enabled)."""
         if not self.enable_buffer or not self.buffer_size_km:
             return None
@@ -258,7 +261,7 @@ class SceneGenerationPipeline:
         logging.info(f"Buffer DEM processing complete: {dem_output_path}")
         return dem_output_path
 
-    def process_buffer_landcover(self) -> Optional[Path]:
+    def process_buffer_landcover(self) -> Optional[UPath]:
         """Process land cover data for buffer area (if enabled)."""
         if not self.enable_buffer or not self.buffer_size_km:
             return None
@@ -289,7 +292,7 @@ class SceneGenerationPipeline:
         logging.info(f"Buffer land cover processing complete: {landcover_output_path}")
         return landcover_output_path
 
-    def process_background_landcover(self) -> Optional[Path]:
+    def process_background_landcover(self) -> Optional[UPath]:
         """Process land cover data for background area (mirrors buffer system)."""
         if not self.enable_buffer or not hasattr(
             self.config.buffer, "background_size_km"
@@ -324,8 +327,8 @@ class SceneGenerationPipeline:
         return landcover_output_path
 
     def generate_background_textures(
-        self, background_landcover_file_path: Path
-    ) -> Optional[Tuple[Path, Path]]:
+        self, background_landcover_file_path: UPath
+    ) -> Optional[Tuple[UPath, UPath]]:
         """Generate texture maps for background area (mirrors buffer system)."""
         if not background_landcover_file_path:
             return None, None
@@ -348,7 +351,7 @@ class SceneGenerationPipeline:
         logging.info("Background texture generation complete")
         return selection_texture_path, preview_texture_path
 
-    def generate_buffer_mesh(self, buffer_dem_file_path: Path) -> Optional[Path]:
+    def generate_buffer_mesh(self, buffer_dem_file_path: UPath) -> Optional[UPath]:
         """Generate 3D mesh for buffer area."""
         if not buffer_dem_file_path:
             return None
@@ -372,8 +375,8 @@ class SceneGenerationPipeline:
         return mesh_path
 
     def generate_buffer_textures(
-        self, buffer_landcover_file_path: Path
-    ) -> Optional[Tuple[Path, Path]]:
+        self, buffer_landcover_file_path: UPath
+    ) -> Optional[Tuple[UPath, UPath]]:
         """Generate texture maps for buffer area."""
         if not buffer_landcover_file_path:
             return None, None
@@ -472,16 +475,12 @@ class SceneGenerationPipeline:
             dem_file = self.process_dem()
             landcover_file = self.process_landcover()
             self.generate_mesh(dem_file)
-            texture_selection, texture_preview = self.generate_textures(landcover_file)
+            self.generate_textures(landcover_file)
 
             buffer_dem_file = None
             buffer_landcover_file = None
-            buffer_texture_selection = None
-            buffer_texture_preview = None
 
             background_landcover_file = None
-            background_texture_selection = None
-            background_texture_preview = None
 
             if self.enable_buffer:
                 buffer_dem_file = self.process_buffer_dem()
@@ -489,15 +488,11 @@ class SceneGenerationPipeline:
                 if buffer_dem_file:
                     self.generate_buffer_mesh(buffer_dem_file)
                 if buffer_landcover_file:
-                    buffer_texture_selection, buffer_texture_preview = (
-                        self.generate_buffer_textures(buffer_landcover_file)
-                    )
+                    self.generate_buffer_textures(buffer_landcover_file)
 
                 background_landcover_file = self.process_background_landcover()
                 if background_landcover_file:
-                    background_texture_selection, background_texture_preview = (
-                        self.generate_background_textures(background_landcover_file)
-                    )
+                    self.generate_background_textures(background_landcover_file)
 
             scene_config = self._create_scene_config()
             scene_config_file = self.output_dir / f"{self.scene_name}.yml"

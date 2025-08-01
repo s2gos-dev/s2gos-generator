@@ -1,59 +1,11 @@
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from upath import UPath
 from typing import Any, Dict, Optional, Union
 
 from s2gos_utils.scene import SceneDescription
 from s2gos_utils.scene.materials import Material, get_landcover_mapping, load_materials
-
-
-def _serialize_path(path: Union[Path, str, None]) -> Optional[str]:
-    """Serialize Path object to string using __fspath__ protocol."""
-    if path is None:
-        return None
-    return os.fspath(path)
-
-
-def _deserialize_path(path_str: Optional[str]) -> Optional[Path]:
-    """Deserialize string to Path object."""
-    if path_str is None:
-        return None
-    return Path(path_str)
-
-
-@dataclass
-class SceneMetadata:
-    """Scene generation metadata and reproducibility parameters."""
-
-    center_lat: float
-    center_lon: float
-    aoi_size_km: float
-    resolution_m: float
-    generation_date: Optional[str] = None
-    dem_index_path: Optional[str] = None
-    landcover_index_path: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert metadata to dictionary for serialization."""
-        result = {
-            "center_lat": self.center_lat,
-            "center_lon": self.center_lon,
-            "aoi_size_km": self.aoi_size_km,
-            "resolution_m": self.resolution_m,
-        }
-
-        if self.generation_date:
-            result["generation_date"] = self.generation_date
-
-        if self.dem_index_path or self.landcover_index_path:
-            result["generation"] = {}
-            if self.dem_index_path:
-                result["generation"]["dem_index_path"] = self.dem_index_path
-            if self.landcover_index_path:
-                result["generation"]["landcover_index_path"] = self.landcover_index_path
-
-        return result
 
 
 def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
@@ -165,10 +117,10 @@ def create_s2gos_scene(
     buffer_mesh_path: str = None,
     buffer_texture_path: str = None,
     buffer_size_km: float = None,
-    output_dir: Path = None,
+    output_dir: UPath = None,
     background_elevation: float = None,
     buffer_dem_file: str = None,
-    material_config_path: Path = None,
+    material_config_path: UPath = None,
     material_overrides: Dict[str, Dict[str, Any]] = None,
     landcover_mapping_overrides: Dict[str, str] = None,
     background_selection_texture: str = None,
@@ -179,8 +131,8 @@ def create_s2gos_scene(
 
     Args:
         scene_name: Name of the scene
-        mesh_path: Path to the terrain mesh file
-        texture_path: Path to the selection texture file
+        mesh_path: UPath to the terrain mesh file
+        texture_path: UPath to the selection texture file
         center_lat: Center latitude of the scene
         center_lon: Center longitude of the scene
         aoi_size_km: Size of the area of interest in kilometers
@@ -202,16 +154,12 @@ def create_s2gos_scene(
         SceneDescription instance with loaded materials and configuration
     """
 
-    metadata = SceneMetadata(
-        center_lat=center_lat,
-        center_lon=center_lon,
-        aoi_size_km=aoi_size_km,
-        resolution_m=resolution_m,
-        generation_date=datetime.now().isoformat(),
-        dem_index_path=kwargs.get("dem_index_path"),
-        landcover_index_path=kwargs.get("landcover_index_path"),
-    )
+    material_mapping = get_landcover_mapping(material_config_path)
 
+    if landcover_mapping_overrides:
+        material_mapping.update(landcover_mapping_overrides)
+
+    material_indices = {}
     landcover_ids = {
         "tree_cover": 0,
         "shrubland": 1,
@@ -225,13 +173,7 @@ def create_s2gos_scene(
         "mangroves": 9,
         "moss_and_lichen": 10,
     }
-
-    material_mapping = get_landcover_mapping(material_config_path)
-
-    if landcover_mapping_overrides:
-        material_mapping.update(landcover_mapping_overrides)
-
-    material_indices = {}
+    
     for landcover_class_name, texture_index in landcover_ids.items():
         if landcover_class_name in material_mapping:
             material_name = material_mapping[landcover_class_name]
@@ -250,7 +192,7 @@ def create_s2gos_scene(
     background = None
     if buffer_mesh_path and buffer_texture_path and buffer_size_km:
         if output_dir is None:
-            output_dir = Path(".")
+            output_dir = UPath(".")
 
         buffer_resolution = int(buffer_size_km * 10)
         target_resolution = int(aoi_size_km * 10)
@@ -274,7 +216,7 @@ def create_s2gos_scene(
             "selection_texture": buffer_texture_path,
             "size_km": buffer_size_km,
             "target_size_km": aoi_size_km,
-            "mask_texture": _serialize_path(mask_path.relative_to(output_dir)),
+            "mask_texture": str(mask_path.relative_to(output_dir)),
         }
 
         bg_elevation = 0.0
@@ -287,9 +229,10 @@ def create_s2gos_scene(
                 if output_dir:
                     dem_path = output_dir / buffer_dem_file
                 else:
-                    dem_path = Path(buffer_dem_file)
+                    dem_path = UPath(buffer_dem_file)
 
-                if dem_path.exists():
+                from s2gos_utils.io.paths import exists
+                if exists(dem_path):
                     dem_data = xr.open_zarr(dem_path)
                     if "elevation" in dem_data.data_vars:
                         bg_elevation = float(dem_data["elevation"].mean().values)
@@ -337,9 +280,9 @@ def create_s2gos_scene(
         background=background,
         material_indices=material_indices,
         metadata={
-            "generation_date": metadata.generation_date,
-            "dem_index_path": metadata.dem_index_path,
-            "landcover_index_path": metadata.landcover_index_path,
+            "generation_date": datetime.now().isoformat(),
+            "dem_index_path": kwargs.get("dem_index_path"),
+            "landcover_index_path": kwargs.get("landcover_index_path"),
             "landcover_ids": landcover_ids,
             "materials_config_path": str(material_config_path),
         },

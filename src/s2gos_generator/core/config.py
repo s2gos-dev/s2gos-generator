@@ -6,15 +6,13 @@ import os
 import importlib.resources
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
+from upath import UPath
 from typing import Annotated, Any, Dict, Literal, Optional, Union
 
-from pydantic import BaseModel, Discriminator, Field, Tag, field_validator, model_validator
-from s2gos_utils.io.paths import exists, open_file, read_yaml
-
-def _is_absolute_or_remote_path(path_str: str) -> bool:
-    """Check if path is absolute or remote URL."""
-    return path_str.startswith(("/", "s3://", "gcs://", "azure://", "http://", "https://"))
+from pydantic import BaseModel, Field, field_validator, model_validator
+from s2gos_utils.io.paths import open_file, read_yaml, exists
+from s2gos_utils.io.resolver import resolver
+from s2gos_utils.typing import PathLike
 
 
 def _parse_version(version_str: str) -> tuple[int, int, int]:
@@ -70,34 +68,6 @@ def _check_config_version_compatibility(config_version: str, current_version: st
             )
 
 
-def load_defaults() -> Dict[str, Any]:
-    """Load default paths from defaults.yaml file.
-    
-    The defaults file location can be overridden using the S2GOS_DEFAULTS_PATH
-    environment variable. If not set, uses the package's defaults.yaml file.
-    """
-    package_root = importlib.resources.files('s2gos_generator')
-    defaults_path = package_root / "defaults.yaml"
-
-    env_path = os.getenv("S2GOS_GEN_DEFAULTS_PATH")
-    if env_path:
-        defaults_path = Path(env_path)
-        if not exists(defaults_path):
-            return {}
-        return read_yaml(defaults_path)
-    
-    if not exists(defaults_path):
-        return {}
-    
-    defaults = read_yaml(defaults_path)
-    
-    for key, value in defaults.items():
-        if isinstance(value, str) and not _is_absolute_or_remote_path(value):
-            defaults[key] = package_root / value
-    
-    return defaults
-
-
 class AerosolDataset(str, Enum):
     """Comprehensive aerosol datasets from Eradiate."""
 
@@ -148,22 +118,65 @@ class SceneLocation(BaseModel):
     )
 
 
-class DataSources(BaseModel):
-    """Data source configuration with validation."""
+def _load_default_data_sources_config() -> Dict[str, Any]:
+    """Load default paths from defaults.yaml file.
+    
+    The defaults file location can be overridden using the S2GOS_DEFAULTS_PATH
+    environment variable. If not set, uses the package's defaults.yaml file.
+    """
+    package_root = importlib.resources.files('s2gos_generator')
+    defaults_path = package_root / "defaults.yaml"
 
-    dem_index_path: Union[Path, str] = Field(..., description="Path to DEM index file")
-    dem_root_dir: Union[Path, str] = Field(
+    env_path = os.getenv("S2GOS_GEN_DEFAULTS_PATH")
+    if env_path:
+        defaults_path = UPath(env_path)
+        if not exists(defaults_path):
+            return {}
+        return read_yaml(defaults_path)
+    
+    if not exists(defaults_path):
+        return {}
+    
+    defaults = read_yaml(defaults_path)
+    
+    for key, value in defaults.items():
+            defaults[key] = str(resolver.resolve(value))
+    
+    return defaults
+
+
+class DataSources(BaseModel):
+    """Data source configuration using FileResolver."""
+
+    dem_index_path: str = Field(..., description="Path to DEM index file")
+    dem_root_dir: str = Field(
         ..., description="Root directory for DEM data"
     )
-    landcover_index_path: Union[Path, str] = Field(
+    landcover_index_path: str = Field(
         ..., description="Path to landcover index file"
     )
-    landcover_root_dir: Union[Path, str] = Field(
+    landcover_root_dir: str = Field(
         ..., description="Root directory for landcover data"
     )
-    material_config_path: Union[Path, str] = Field(
+    material_config_path: str = Field(
         ..., description="Path to custom material configuration JSON"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _load_defaults_and_merge_overrides(cls, data: Any) -> Any:
+        """
+        Load defaults from YAML and merge them with user-provided data.
+        This allows a base configuration to be set while still allowing
+        users to specify their own paths. The user's data takes precedence.
+        """
+        if not isinstance(data, dict):
+            # Let Pydantic handle validation for non-dictionary inputs.
+            return data
+        
+        default_config = _load_default_data_sources_config()
+        default_config.update(data)
+        return default_config
 
     @field_validator(
         "dem_index_path",
@@ -175,14 +188,11 @@ class DataSources(BaseModel):
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path_str = str(v)
-        if path_str.startswith(("s3://", "gcs://", "azure://", "http://", "https://")):
-            return v
-        
-        path = Path(v)
+        path = UPath(v)
         if not path.exists():
-            raise ValueError(f"Local path does not exist: {v}")
+            raise ValueError(f"Path does not exist: {v}")
         return v
+    
 
 class ProcessingOptions(BaseModel):
     """Processing options for scene generation."""
@@ -426,7 +436,7 @@ class SceneGenConfig(BaseModel):
 
     location: SceneLocation = Field(..., description="Geographic location")
     data_sources: DataSources = Field(..., description="Data source configuration")
-    output_dir: Path = Field(..., description="Output directory for generated scene")
+    output_dir: UPath = Field(..., description="Output directory for generated scene")
     processing: ProcessingOptions = Field(
         default_factory=ProcessingOptions, description="Processing options"
     )
@@ -444,15 +454,17 @@ class SceneGenConfig(BaseModel):
     model_config = {
         "validate_assignment": True,
         "extra": "forbid",
-        "json_encoders": {datetime: lambda v: v.isoformat(), Path: lambda v: str(v)},
+        "arbitrary_types_allowed": True,
+        "json_encoders": {datetime: lambda v: v.isoformat(), UPath: lambda v: str(v)},
     }
 
     @field_validator("output_dir")
     @classmethod
     def validate_output_dir(cls, v):
         """Validate and create output directory if needed."""
-        v = Path(v)
-        v.mkdir(parents=True, exist_ok=True)
+        from s2gos_utils.io.paths import mkdir
+        v = UPath(v)
+        mkdir(v)
         return v
 
     @model_validator(mode="after")
@@ -468,7 +480,7 @@ class SceneGenConfig(BaseModel):
         """Convert to dictionary for serialization."""
         return self.model_dump()
 
-    def to_json(self, path: Optional[Path] = None, indent: int = 2) -> str:
+    def to_json(self, path: Optional[UPath] = None, indent: int = 2) -> str:
         """Export to JSON format."""
         json_str = self.model_dump_json(indent=indent)
         if path:
@@ -477,7 +489,7 @@ class SceneGenConfig(BaseModel):
         return json_str
 
     @classmethod
-    def from_json(cls, path: Path) -> "SceneGenConfig":
+    def from_json(cls, path: UPath) -> "SceneGenConfig":
         """Load from JSON file with version compatibility checking."""
         with open_file(path, "r") as f:
             data = json.load(f)
@@ -547,16 +559,6 @@ class SceneGenConfig(BaseModel):
         """Validate the complete configuration and return any errors."""
         errors = []
 
-        if not self.data_sources.dem_index_path.exists():
-            errors.append(
-                f"DEM index file not found: {self.data_sources.dem_index_path}"
-            )
-
-        if not self.data_sources.landcover_index_path.exists():
-            errors.append(
-                f"Landcover index file not found: {self.data_sources.landcover_index_path}"
-            )
-
         if self.buffer:
             if self.buffer.buffer_size_km <= self.location.aoi_size_km:
                 errors.append("Buffer size must be larger than AOI size")
@@ -564,22 +566,22 @@ class SceneGenConfig(BaseModel):
         return errors
 
     @property
-    def scene_output_dir(self) -> Path:
+    def scene_output_dir(self) -> UPath:
         """Get the specific output directory for this scene."""
         return self.output_dir / self.scene_name
 
     @property
-    def meshes_dir(self) -> Path:
+    def meshes_dir(self) -> UPath:
         """Get the meshes output directory."""
         return self.scene_output_dir / "meshes"
 
     @property
-    def textures_dir(self) -> Path:
+    def textures_dir(self) -> UPath:
         """Get the textures output directory."""
         return self.scene_output_dir / "textures"
 
     @property
-    def data_dir(self) -> Path:
+    def data_dir(self) -> UPath:
         """Get the data output directory."""
         return self.scene_output_dir / "data"
 
@@ -594,17 +596,17 @@ def create_scene_config(
     center_lat: float,
     center_lon: float,
     aoi_size_km: float,
-    output_dir: Path,
+    output_dir: UPath,
     target_resolution_m: float = 30.0,
     description: Optional[str] = None,
-    dem_index_path: Optional[Union[Path, str]] = None,
-    dem_root_dir: Optional[Union[Path, str]] = None,
-    landcover_index_path: Optional[Union[Path, str]] = None,
-    landcover_root_dir: Optional[Union[Path, str]] = None,
-    material_config_path: Optional[Union[Path, str]] = None,
+    data_overrides: Optional[dict] = None,
     atmosphere: Optional[AtmosphereConfig] = None,
+    **kwargs
 ) -> SceneGenConfig:
-    """Create a scene configuration using defaults with optional overrides.
+    """Revolutionary scene configuration using PathResolver.
+    
+    This modern approach eliminates verbose conditional logic and uses the
+    global resolver to find data files elegantly.
     
     Args:
         scene_name: Scene name (used for output files)
@@ -614,85 +616,29 @@ def create_scene_config(
         output_dir: Output directory for generated scene
         target_resolution_m: Target resolution in meters (default: 30.0)
         description: Optional scene description
-        dem_index_path: Optional path to DEM index file (uses default if not provided)
-        dem_root_dir: Optional root directory for DEM data (uses default if not provided)
-        landcover_index_path: Optional path to landcover index file (uses default if not provided)
-        landcover_root_dir: Optional root directory for landcover data (uses default if not provided)
-        material_config_path: Optional path to material configuration JSON (uses default if not provided)
-        atmosphere: Optional atmosphere configuration (uses default molecular atmosphere if not provided)
-        
-    Returns:
-        SceneGenConfig: Configured scene generation configuration
+        data_overrides: Optional dict with user data overrides:
+            - dem_index: Custom DEM index file
+            - landcover_index: Custom landcover index file  
+            - materials_config: Custom materials config file
+        atmosphere: Optional atmosphere configuration
+        **kwargs: Additional configuration options
     """
-
-    defaults = load_defaults()
-
-    final_dem_index_path = (
-        dem_index_path if dem_index_path is not None else defaults.get("dem_index_path")
-    )
-    final_dem_root_dir = (
-        dem_root_dir if dem_root_dir is not None else defaults.get("dem_root_dir")
-    )
-    final_landcover_index_path = (
-        landcover_index_path
-        if landcover_index_path is not None
-        else defaults.get("landcover_index_path")
-    )
-    final_landcover_root_dir = (
-        landcover_root_dir
-        if landcover_root_dir is not None
-        else defaults.get("landcover_root_dir")
-    )
-    final_material_config_path = (
-        material_config_path
-        if material_config_path is not None
-        else defaults.get("material_config_path")
-    )
-
-    # Check that all required paths are available
-    if not final_dem_index_path:
-        raise ValueError("dem_index_path not provided and not found in defaults")
-    if not final_dem_root_dir:
-        raise ValueError("dem_root_dir not provided and not found in defaults")
-    if not final_landcover_index_path:
-        raise ValueError("landcover_index_path not provided and not found in defaults")
-    if not final_landcover_root_dir:
-        raise ValueError("landcover_root_dir not provided and not found in defaults")
-    if not final_material_config_path:
-        raise ValueError("material_config_path not provided and not found in defaults")
-
+    # Create data sources with resolver-powered elegance
+    data_sources = DataSources(**(data_overrides or {}))
+    
     return SceneGenConfig(
         scene_name=scene_name,
         description=description,
         location=SceneLocation(
-            center_lat=center_lat, center_lon=center_lon, aoi_size_km=aoi_size_km
+            center_lat=center_lat, 
+            center_lon=center_lon, 
+            aoi_size_km=aoi_size_km
         ),
-        data_sources=DataSources(
-            dem_index_path=Path(final_dem_index_path)
-            if not str(final_dem_index_path).startswith(("s3://", "gcs://", "azure://"))
-            else final_dem_index_path,
-            dem_root_dir=Path(final_dem_root_dir)
-            if not str(final_dem_root_dir).startswith(("s3://", "gcs://", "azure://"))
-            else final_dem_root_dir,
-            landcover_index_path=Path(final_landcover_index_path)
-            if not str(final_landcover_index_path).startswith(
-                ("s3://", "gcs://", "azure://")
-            )
-            else final_landcover_index_path,
-            landcover_root_dir=Path(final_landcover_root_dir)
-            if not str(final_landcover_root_dir).startswith(
-                ("s3://", "gcs://", "azure://")
-            )
-            else final_landcover_root_dir,
-            material_config_path=Path(final_material_config_path)
-            if not str(final_material_config_path).startswith(
-                ("s3://", "gcs://", "azure://")
-            )
-            else final_material_config_path,
-        ),
+        data_sources=data_sources,
         output_dir=output_dir,
         processing=ProcessingOptions(target_resolution_m=target_resolution_m),
         atmosphere=atmosphere or _default_atmosphere_config(),
+        **kwargs
     )
 
 

@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+from upath import UPath
 
 import numpy as np
 import trimesh
@@ -107,19 +107,20 @@ class MeshGenerator:
         return mesh
 
     def save_mesh(
-        self, mesh: trimesh.Trimesh, output_path: Path, format: str = "ply"
+        self, mesh: trimesh.Trimesh, output_path: UPath, format: str = "ply"
     ) -> None:
         """
         Saves a mesh to file.
 
         Args:
             mesh: The mesh to save.
-            output_path: Path where the mesh will be saved.
+            output_path: UPath where the mesh will be saved.
             format: File format (e.g., 'ply', 'obj', 'stl').
         """
         logging.info(f"Saving mesh to {output_path}")
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        from s2gos_utils.io.paths import mkdir
+        mkdir(output_path.parent)
 
         if not output_path.suffix:
             output_path = output_path.with_suffix(f".{format}")
@@ -129,8 +130,8 @@ class MeshGenerator:
 
     def generate_mesh_from_dem_file(
         self,
-        dem_file_path: Path,
-        output_path: Path,
+        dem_file_path: UPath,
+        output_path: UPath,
         add_uvs: bool = True,
         handle_nans: bool = True,
     ) -> trimesh.Trimesh:
@@ -138,8 +139,8 @@ class MeshGenerator:
         Complete pipeline: loads DEM from file, generates mesh, optionally adds UVs, and saves.
 
         Args:
-            dem_file_path: Path to the DEM NetCDF file.
-            output_path: Path where the mesh will be saved.
+            dem_file_path: UPath to the DEM NetCDF file.
+            output_path: UPath where the mesh will be saved.
             add_uvs: Whether to add UV coordinates.
             handle_nans: Whether to handle NaN values in the DEM.
 

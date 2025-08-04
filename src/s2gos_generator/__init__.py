@@ -14,8 +14,6 @@ from .core.exceptions import (
 )
 from .scene import create_s2gos_scene
 
-__version__ = "0.1.0"
-
 # Configure logging for the entire package
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

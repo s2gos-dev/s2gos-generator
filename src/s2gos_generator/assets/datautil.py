@@ -1,4 +1,3 @@
-from upath import UPath
 from typing import Optional
 
 import numpy as np

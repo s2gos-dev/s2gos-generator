@@ -1,10 +1,10 @@
 import logging
-from upath import UPath
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import xarray as xr
 from PIL import Image
+from upath import UPath
 
 DEFAULT_MATERIALS = [
     {
@@ -185,6 +185,7 @@ class TextureGenerator:
     def _save_selection_texture(self, texture: np.ndarray, output_path: UPath) -> None:
         """Save selection texture as a grayscale PNG."""
         from s2gos_utils.io.paths import mkdir
+
         mkdir(output_path.parent)
         image = Image.fromarray(texture, mode="L")
         image.save(output_path)
@@ -192,6 +193,7 @@ class TextureGenerator:
     def _save_color_texture(self, texture: np.ndarray, output_path: UPath) -> None:
         """Save color texture as RGB PNG."""
         from s2gos_utils.io.paths import mkdir
+
         mkdir(output_path.parent)
         image = Image.fromarray(texture, mode="RGB")
         image.save(output_path)
@@ -325,6 +327,7 @@ class TextureGenerator:
         mask[start_y:end_y, start_x:end_x] = 0
 
         from s2gos_utils.io.paths import mkdir
+
         mkdir(output_path.parent)
         image = Image.fromarray(mask, mode="L")
         image.save(output_path)

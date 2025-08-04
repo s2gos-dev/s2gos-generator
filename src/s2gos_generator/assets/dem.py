@@ -1,10 +1,10 @@
 import logging
-from upath import UPath
 from typing import Optional, Union
 
 import xarray as xr
 from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
+from upath import UPath
 
 from .base_processor import BaseTileProcessor
 

@@ -1,9 +1,9 @@
 import logging
-from upath import UPath
 
 import numpy as np
 import trimesh
 import xarray as xr
+from upath import UPath
 
 
 class MeshGenerator:
@@ -120,6 +120,7 @@ class MeshGenerator:
         logging.info(f"Saving mesh to {output_path}")
 
         from s2gos_utils.io.paths import mkdir
+
         mkdir(output_path.parent)
 
         if not output_path.suffix:

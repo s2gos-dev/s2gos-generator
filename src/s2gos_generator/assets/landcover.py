@@ -1,10 +1,10 @@
 import logging
-from upath import UPath
 from typing import Optional, Union
 
 import xarray as xr
 from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
+from upath import UPath
 
 from .base_processor import BaseTileProcessor
 
@@ -12,9 +12,7 @@ from .base_processor import BaseTileProcessor
 class LandCoverProcessor(BaseTileProcessor):
     """Finds, merges, and processes ESA WorldCover land cover tiles for a given AOI."""
 
-    def __init__(
-        self, index_path: PathLike, landcover_root_dir: PathLike
-    ):
+    def __init__(self, index_path: PathLike, landcover_root_dir: PathLike):
         """Initialize the land cover processor."""
         super().__init__(index_path, landcover_root_dir, "land cover")
 

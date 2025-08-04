@@ -2,7 +2,6 @@
 
 import logging
 from abc import ABC, abstractmethod
-from upath import UPath
 from typing import List, Optional, Union
 
 import geopandas as gpd
@@ -12,6 +11,7 @@ import xarray as xr
 from s2gos_utils.io.paths import exists, open_dataarray, read_geofeather
 from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
+from upath import UPath
 
 from .datautil import regrid_to_projection
 
@@ -246,6 +246,7 @@ class BaseTileProcessor(ABC):
         """Save dataset to zarr format with proper directory creation."""
         logging.info(f"Saving processed {self.data_description} to '{output_path}'")
         from s2gos_utils.io.paths import mkdir
+
         mkdir(output_path.parent)
         dataset.to_zarr(output_path, mode="w")
         logging.info(f"{self.data_description} generation complete.")

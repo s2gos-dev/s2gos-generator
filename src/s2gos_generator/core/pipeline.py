@@ -1,11 +1,12 @@
 import logging
-from upath import UPath
 from typing import Optional, Tuple
 
 import xarray as xr
+from s2gos_utils.scene import SceneDescription
+from upath import UPath
 
 from .assets import SceneAssets
-from .config import SceneGenConfig
+from .config import AtmosphereConfig, SceneGenConfig
 from .exceptions import DataNotFoundError, ProcessingError
 from ..assets.dem import DEMProcessor
 from ..assets.landcover import LandCoverProcessor
@@ -105,7 +106,7 @@ class SceneGenerationPipeline:
         return self.config.buffer.background_elevation if self.config.buffer else 0.0
 
     @property
-    def atmosphere_config(self):
+    def atmosphere_config(self) -> AtmosphereConfig:
         """Get atmosphere configuration from the configuration."""
         return self.config.atmosphere
 
@@ -118,7 +119,7 @@ class SceneGenerationPipeline:
         self.textures_dir = UPath(self.config.textures_dir)
 
         from s2gos_utils.io.paths import mkdir
-        
+
         for directory in [
             self.output_dir,
             self.data_dir,
@@ -218,7 +219,6 @@ class SceneGenerationPipeline:
         if preview_texture_path:
             self.assets.preview_texture_file = preview_texture_path
 
-        # Load landcover data from Zarr format
         landcover_dataset = xr.open_zarr(landcover_file_path)
         landcover_data = landcover_dataset["landcover"]
         if isinstance(landcover_data, xr.Dataset):
@@ -301,7 +301,6 @@ class SceneGenerationPipeline:
 
         logging.info("=== Processing Background Land Cover Data ===")
 
-        # Create background AOI polygon
         background_aoi = create_aoi_polygon(
             center_lat=self.center_lat,
             center_lon=self.center_lon,
@@ -399,8 +398,8 @@ class SceneGenerationPipeline:
         logging.info("Buffer texture generation complete")
         return selection_texture_path, preview_texture_path
 
-    def _create_scene_config(self):
-        """Create complete scene configuration from generated assets."""
+    def _create_scene_description(self) -> SceneDescription:
+        """Create complete scene description from generated assets."""
         buffer_mesh_path = None
         buffer_texture_path = None
         buffer_size_km = None
@@ -466,7 +465,7 @@ class SceneGenerationPipeline:
             atmosphere_config=self.atmosphere_config,
         )
 
-    def run_full_pipeline(self):
+    def run_full_pipeline(self) -> SceneDescription:
         """Execute the complete scene generation pipeline."""
         logging.info(f"Starting full pipeline for scene '{self.scene_name}'")
 
@@ -494,16 +493,16 @@ class SceneGenerationPipeline:
                 if background_landcover_file:
                     self.generate_background_textures(background_landcover_file)
 
-            scene_config = self._create_scene_config()
-            scene_config_file = self.output_dir / f"{self.scene_name}.yml"
-            scene_config.save_yaml(scene_config_file)
+            scene_description = self._create_scene_description()
+            scene_description_file = self.output_dir / f"{self.scene_name}.yml"
+            scene_description.save_yaml(scene_description_file)
 
-            self.assets.config_file = scene_config_file
+            self.assets.config_file = scene_description_file
 
             logging.info("=== Pipeline Complete ===")
-            logging.info(f"Scene configuration saved to: {scene_config_file}")
+            logging.info(f"Scene description saved to: {scene_description_file}")
 
-            return scene_config
+            return scene_description
 
         except FileNotFoundError as e:
             raise DataNotFoundError(f"Required file not found: {e}", str(e))

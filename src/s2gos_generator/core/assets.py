@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from upath import UPath
 from typing import Dict, Optional
 
 from s2gos_utils.io.paths import optional_str
+from upath import UPath
 
 
 @dataclass
@@ -40,9 +40,17 @@ class SceneAssets:
             "buffer_dem_file": optional_str(self.buffer_dem_file),
             "buffer_landcover_file": optional_str(self.buffer_landcover_file),
             "buffer_mesh_file": optional_str(self.buffer_mesh_file),
-            "buffer_selection_texture_file": optional_str(self.buffer_selection_texture_file),
-            "buffer_preview_texture_file": optional_str(self.buffer_preview_texture_file),
+            "buffer_selection_texture_file": optional_str(
+                self.buffer_selection_texture_file
+            ),
+            "buffer_preview_texture_file": optional_str(
+                self.buffer_preview_texture_file
+            ),
             "background_landcover_file": optional_str(self.background_landcover_file),
-            "background_selection_texture_file": optional_str(self.background_selection_texture_file),
-            "background_preview_texture_file": optional_str(self.background_preview_texture_file),
+            "background_selection_texture_file": optional_str(
+                self.background_selection_texture_file
+            ),
+            "background_preview_texture_file": optional_str(
+                self.background_preview_texture_file
+            ),
         }

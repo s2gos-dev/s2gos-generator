@@ -1,71 +1,19 @@
 from __future__ import annotations
 
-import json
-import logging
-import os
 import importlib.resources
+import json
+import os
 from datetime import datetime
 from enum import Enum
-from upath import UPath
 from typing import Annotated, Any, Dict, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from s2gos_utils.io.paths import open_file, read_yaml, exists
+from s2gos_utils import validate_config_version
+from s2gos_utils.io.paths import exists, open_file, read_yaml
 from s2gos_utils.io.resolver import resolver
-from s2gos_utils.typing import PathLike
+from upath import UPath
 
-
-def _parse_version(version_str: str) -> tuple[int, int, int]:
-    """Parse semantic version string into (major, minor, patch) tuple."""
-    try:
-        parts = version_str.split(".")
-        if len(parts) != 3:
-            raise ValueError("Version must have exactly 3 parts (major.minor.patch)")
-        return tuple(int(part) for part in parts)
-    except (ValueError, TypeError) as e:
-        raise ValueError(f"Invalid version format '{version_str}': {e}")
-
-
-def _check_config_version_compatibility(config_version: str, current_version: str = "1.0.0") -> None:
-    """Check if config version is compatible with current code version.
-    
-    Args:
-        config_version: Version from loaded config
-        current_version: Current code version (default: "1.0.0")
-        
-    Raises:
-        ValueError: If major version mismatch (incompatible)
-        
-    Logs:
-        Warning: If minor/patch version differences exist
-    """
-    try:
-        config_major, config_minor, config_patch = _parse_version(config_version)
-        current_major, current_minor, current_patch = _parse_version(current_version)
-    except ValueError as e:
-        logging.warning(f"Could not parse version numbers: {e}")
-        return
-    
-    # Major version mismatch is incompatible
-    if config_major != current_major:
-        raise ValueError(
-            f"Incompatible config version: config uses v{config_version} "
-            f"but current code expects v{current_major}.x.x. "
-            f"Please update your configuration or use compatible code version."
-        )
-    
-    # Minor/patch differences get warnings
-    if config_minor != current_minor or config_patch != current_patch:
-        if config_minor > current_minor or (config_minor == current_minor and config_patch > current_patch):
-            logging.warning(
-                f"Config version v{config_version} is newer than current code v{current_version}. "
-                f"Some features may not work as expected."
-            )
-        else:
-            logging.warning(
-                f"Config version v{config_version} is older than current code v{current_version}. "
-                f"Consider updating your configuration."
-            )
+from .._version import get_version
 
 
 class AerosolDataset(str, Enum):
@@ -120,11 +68,11 @@ class SceneLocation(BaseModel):
 
 def _load_default_data_sources_config() -> Dict[str, Any]:
     """Load default paths from defaults.yaml file.
-    
+
     The defaults file location can be overridden using the S2GOS_DEFAULTS_PATH
     environment variable. If not set, uses the package's defaults.yaml file.
     """
-    package_root = importlib.resources.files('s2gos_generator')
+    package_root = importlib.resources.files("s2gos_generator")
     defaults_path = package_root / "defaults.yaml"
 
     env_path = os.getenv("S2GOS_GEN_DEFAULTS_PATH")
@@ -133,15 +81,15 @@ def _load_default_data_sources_config() -> Dict[str, Any]:
         if not exists(defaults_path):
             return {}
         return read_yaml(defaults_path)
-    
+
     if not exists(defaults_path):
         return {}
-    
+
     defaults = read_yaml(defaults_path)
-    
+
     for key, value in defaults.items():
-            defaults[key] = str(resolver.resolve(value))
-    
+        defaults[key] = str(resolver.resolve(value))
+
     return defaults
 
 
@@ -149,12 +97,8 @@ class DataSources(BaseModel):
     """Data source configuration using FileResolver."""
 
     dem_index_path: str = Field(..., description="Path to DEM index file")
-    dem_root_dir: str = Field(
-        ..., description="Root directory for DEM data"
-    )
-    landcover_index_path: str = Field(
-        ..., description="Path to landcover index file"
-    )
+    dem_root_dir: str = Field(..., description="Root directory for DEM data")
+    landcover_index_path: str = Field(..., description="Path to landcover index file")
     landcover_root_dir: str = Field(
         ..., description="Root directory for landcover data"
     )
@@ -173,7 +117,7 @@ class DataSources(BaseModel):
         if not isinstance(data, dict):
             # Let Pydantic handle validation for non-dictionary inputs.
             return data
-        
+
         default_config = _load_default_data_sources_config()
         default_config.update(data)
         return default_config
@@ -192,7 +136,7 @@ class DataSources(BaseModel):
         if not path.exists():
             raise ValueError(f"Path does not exist: {v}")
         return v
-    
+
 
 class ProcessingOptions(BaseModel):
     """Processing options for scene generation."""
@@ -232,6 +176,7 @@ class ThermophysicalConfig(BaseModel):
 
 class MolecularAtmosphereConfig(BaseModel):
     """Configuration for molecular atmosphere using Eradiate's MolecularAtmosphere."""
+
     type: Literal["molecular"] = "molecular"
     thermoprops: ThermophysicalConfig = Field(
         default_factory=ThermophysicalConfig,
@@ -246,6 +191,7 @@ class MolecularAtmosphereConfig(BaseModel):
 
 class HomogeneousAtmosphereConfig(BaseModel):
     """Configuration for homogeneous atmosphere with uniform optical properties."""
+
     type: Literal["homogeneous"] = "homogeneous"
     aerosol_dataset: AerosolDataset = Field(
         AerosolDataset.SIXSV_CONTINENTAL, description="Aerosol dataset to use"
@@ -264,6 +210,7 @@ class HomogeneousAtmosphereConfig(BaseModel):
 
 class HeterogeneousAtmosphereConfig(BaseModel):
     """Configuration for heterogeneous atmosphere with molecular background and particle layers."""
+
     type: Literal["heterogeneous"] = "heterogeneous"
     molecular: Optional[MolecularAtmosphereConfig] = Field(
         None, description="Molecular atmosphere configuration"
@@ -287,6 +234,7 @@ AtmosphereTypeConfig = Union[
     HomogeneousAtmosphereConfig,
     HeterogeneousAtmosphereConfig,
 ]
+
 
 class ParticleDistribution(BaseModel):
     """Base class for particle distribution configurations."""
@@ -365,9 +313,7 @@ class AtmosphereConfig(BaseModel):
         40000.0, gt=0.0, description="Top of atmosphere altitude in meters"
     )
 
-    details: Annotated[
-        AtmosphereTypeConfig, Field(..., discriminator="type")
-    ]
+    details: Annotated[AtmosphereTypeConfig, Field(..., discriminator="type")]
 
     @model_validator(mode="after")
     def validate_atmosphere_config(self):
@@ -427,7 +373,7 @@ class SceneGenConfig(BaseModel):
     """
 
     config_version: str = Field(
-        "1.0.0", description="Configuration schema version"
+        default_factory=get_version, description="Configuration schema version"
     )
     scene_name: str = Field(
         ..., min_length=1, description="Scene name (used for output files)"
@@ -463,6 +409,7 @@ class SceneGenConfig(BaseModel):
     def validate_output_dir(cls, v):
         """Validate and create output directory if needed."""
         from s2gos_utils.io.paths import mkdir
+
         v = UPath(v)
         mkdir(v)
         return v
@@ -493,10 +440,12 @@ class SceneGenConfig(BaseModel):
         """Load from JSON file with version compatibility checking."""
         with open_file(path, "r") as f:
             data = json.load(f)
-        
-        config_version = data.get("config_version", "1.0.0")
-        _check_config_version_compatibility(config_version)
-        
+
+        # Simple version validation only
+        validate_config_version(
+            "scene_config", data, get_version(), "scene generation configuration"
+        )
+
         return cls(**data)
 
     def enable_buffer_system(
@@ -601,13 +550,13 @@ def create_scene_config(
     description: Optional[str] = None,
     data_overrides: Optional[dict] = None,
     atmosphere: Optional[AtmosphereConfig] = None,
-    **kwargs
+    **kwargs,
 ) -> SceneGenConfig:
     """Revolutionary scene configuration using PathResolver.
-    
+
     This modern approach eliminates verbose conditional logic and uses the
     global resolver to find data files elegantly.
-    
+
     Args:
         scene_name: Scene name (used for output files)
         center_lat: Center latitude in degrees
@@ -618,27 +567,25 @@ def create_scene_config(
         description: Optional scene description
         data_overrides: Optional dict with user data overrides:
             - dem_index: Custom DEM index file
-            - landcover_index: Custom landcover index file  
+            - landcover_index: Custom landcover index file
             - materials_config: Custom materials config file
         atmosphere: Optional atmosphere configuration
         **kwargs: Additional configuration options
     """
     # Create data sources with resolver-powered elegance
     data_sources = DataSources(**(data_overrides or {}))
-    
+
     return SceneGenConfig(
         scene_name=scene_name,
         description=description,
         location=SceneLocation(
-            center_lat=center_lat, 
-            center_lon=center_lon, 
-            aoi_size_km=aoi_size_km
+            center_lat=center_lat, center_lon=center_lon, aoi_size_km=aoi_size_km
         ),
         data_sources=data_sources,
         output_dir=output_dir,
         processing=ProcessingOptions(target_resolution_m=target_resolution_m),
         atmosphere=atmosphere or _default_atmosphere_config(),
-        **kwargs
+        **kwargs,
     )
 
 

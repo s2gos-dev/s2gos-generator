@@ -1,11 +1,9 @@
-import os
-from dataclasses import dataclass
 from datetime import datetime
-from upath import UPath
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from s2gos_utils.scene import SceneDescription
 from s2gos_utils.scene.materials import Material, get_landcover_mapping, load_materials
+from upath import UPath
 
 
 def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
@@ -17,7 +15,7 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
     Returns:
         Dictionary format suitable for scene description
     """
-    
+
     base_dict = {
         "boa": atmosphere_config.boa,
         "toa": atmosphere_config.toa,
@@ -114,17 +112,17 @@ def create_s2gos_scene(
     center_lon: float,
     aoi_size_km: float,
     resolution_m: float = 30.0,
-    buffer_mesh_path: str = None,
-    buffer_texture_path: str = None,
-    buffer_size_km: float = None,
-    output_dir: UPath = None,
-    background_elevation: float = None,
-    buffer_dem_file: str = None,
-    material_config_path: UPath = None,
-    material_overrides: Dict[str, Dict[str, Any]] = None,
-    landcover_mapping_overrides: Dict[str, str] = None,
-    background_selection_texture: str = None,
-    background_size_km: float = None,
+    buffer_mesh_path: Optional[str] = None,
+    buffer_texture_path: Optional[str] = None,
+    buffer_size_km: Optional[float] = None,
+    output_dir: Optional[UPath] = None,
+    background_elevation: Optional[float] = None,
+    buffer_dem_file: Optional[str] = None,
+    material_config_path: Optional[UPath] = None,
+    material_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+    landcover_mapping_overrides: Optional[Dict[str, str]] = None,
+    background_selection_texture: Optional[str] = None,
+    background_size_km: Optional[float] = None,
     **kwargs,
 ) -> SceneDescription:
     """Create standard S2GOS scene configuration.
@@ -173,7 +171,7 @@ def create_s2gos_scene(
         "mangroves": 9,
         "moss_and_lichen": 10,
     }
-    
+
     for landcover_class_name, texture_index in landcover_ids.items():
         if landcover_class_name in material_mapping:
             material_name = material_mapping[landcover_class_name]
@@ -232,6 +230,7 @@ def create_s2gos_scene(
                     dem_path = UPath(buffer_dem_file)
 
                 from s2gos_utils.io.paths import exists
+
                 if exists(dem_path):
                     dem_data = xr.open_zarr(dem_path)
                     if "elevation" in dem_data.data_vars:

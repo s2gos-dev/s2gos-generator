@@ -123,6 +123,7 @@ def create_s2gos_scene(
     landcover_mapping_overrides: Optional[Dict[str, str]] = None,
     background_selection_texture: Optional[str] = None,
     background_size_km: Optional[float] = None,
+    hamster_data_paths: Optional[Dict[str, UPath]] = None,
     **kwargs,
 ) -> SceneDescription:
     """Create standard S2GOS scene configuration.
@@ -146,6 +147,7 @@ def create_s2gos_scene(
         landcover_mapping_overrides: Optional dictionary of landcover-to-material mapping overrides
         background_selection_texture: Optional path to background selection texture file
         background_size_km: Optional background size in kilometers
+        hamster_data_paths: Optional dictionary of paths to processed HAMSTER albedo zarr files for each surface area
         **kwargs: Additional configuration parameters
 
     Returns:
@@ -182,6 +184,12 @@ def create_s2gos_scene(
         "selection_texture": texture_path,
         "size_km": aoi_size_km,
     }
+    
+    if hamster_data_paths and 'target' in hamster_data_paths:
+        if output_dir:
+            target["hamster_data"] = str(hamster_data_paths['target'].relative_to(output_dir))
+        else:
+            target["hamster_data"] = str(hamster_data_paths['target'])
 
     atmosphere_config = kwargs.get("atmosphere_config")
     atmosphere = _convert_atmosphere_config_to_dict(atmosphere_config)
@@ -216,6 +224,12 @@ def create_s2gos_scene(
             "target_size_km": aoi_size_km,
             "mask_texture": str(mask_path.relative_to(output_dir)),
         }
+        
+        if hamster_data_paths and 'buffer' in hamster_data_paths:
+            if output_dir:
+                buffer["hamster_data"] = str(hamster_data_paths['buffer'].relative_to(output_dir))
+            else:
+                buffer["hamster_data"] = str(hamster_data_paths['buffer'])
 
         bg_elevation = 0.0
         if background_elevation is not None:
@@ -252,6 +266,12 @@ def create_s2gos_scene(
                 "elevation": bg_elevation,
                 "size_km": background_size_km,
             }
+            
+            if hamster_data_paths and 'background' in hamster_data_paths:
+                if output_dir:
+                    background["hamster_data"] = str(hamster_data_paths['background'].relative_to(output_dir))
+                else:
+                    background["hamster_data"] = str(hamster_data_paths['background'])
         else:
             background = None
 
@@ -268,9 +288,17 @@ def create_s2gos_scene(
             else:
                 materials[material_id] = Material.from_dict(overrides, id=material_id)
 
+    metadata = {
+        "generation_date": datetime.now().isoformat(),
+        "dem_index_path": kwargs.get("dem_index_path"),
+        "landcover_index_path": kwargs.get("landcover_index_path"),
+        "landcover_ids": landcover_ids,
+        "materials_config_path": str(material_config_path),
+    }
+    
     scene_description = SceneDescription(
         name=scene_name,
-        location={"lat": center_lat, "lon": center_lon},
+        location={"center_lat": center_lat, "center_lon": center_lon, "aoi_size_km": aoi_size_km},
         resolution_m=resolution_m,
         materials=materials,
         atmosphere=atmosphere,
@@ -278,13 +306,7 @@ def create_s2gos_scene(
         buffer=buffer,
         background=background,
         material_indices=material_indices,
-        metadata={
-            "generation_date": datetime.now().isoformat(),
-            "dem_index_path": kwargs.get("dem_index_path"),
-            "landcover_index_path": kwargs.get("landcover_index_path"),
-            "landcover_ids": landcover_ids,
-            "materials_config_path": str(material_config_path),
-        },
+        metadata=metadata,
     )
 
     return scene_description

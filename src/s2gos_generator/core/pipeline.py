@@ -130,14 +130,44 @@ class SceneGenerationPipeline:
 
     def generate_aoi(self) -> None:
         """Generate the Area of Interest polygon."""
-        self.aoi_polygon = create_aoi_polygon(
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            side_length_km=self.aoi_size_km,
-        )
+        self.aoi_polygon = self._get_target_aoi_polygon()
         logging.info(
             f"Created AOI polygon: {self.aoi_size_km}km x {self.aoi_size_km}km"
         )
+
+    def _get_target_aoi_polygon(self):
+        """Get or create the target AOI polygon (cached)."""
+        if not hasattr(self, '_target_aoi_polygon'):
+            self._target_aoi_polygon = create_aoi_polygon(
+                center_lat=self.center_lat,
+                center_lon=self.center_lon,
+                side_length_km=self.aoi_size_km,
+            )
+        return self._target_aoi_polygon
+
+    def _get_buffer_aoi_polygon(self):
+        """Get or create the buffer AOI polygon (cached)."""
+        if not hasattr(self, '_buffer_aoi_polygon'):
+            if not self.enable_buffer or not self.buffer_size_km:
+                return None
+            self._buffer_aoi_polygon = create_aoi_polygon(
+                center_lat=self.center_lat,
+                center_lon=self.center_lon,
+                side_length_km=self.buffer_size_km,
+            )
+        return self._buffer_aoi_polygon
+
+    def _get_background_aoi_polygon(self):
+        """Get or create the background AOI polygon (cached)."""
+        if not hasattr(self, '_background_aoi_polygon'):
+            if not self.enable_buffer or not hasattr(self.config.buffer, 'background_size_km') or not self.config.buffer.background_size_km:
+                return None
+            self._background_aoi_polygon = create_aoi_polygon(
+                center_lat=self.center_lat,
+                center_lon=self.center_lon,
+                side_length_km=self.config.buffer.background_size_km,
+            )
+        return self._background_aoi_polygon
 
     def process_dem(self) -> UPath:
         """Process DEM data for the AOI."""
@@ -238,11 +268,9 @@ class SceneGenerationPipeline:
 
         logging.info("=== Processing Buffer DEM Data ===")
 
-        buffer_aoi = create_aoi_polygon(
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            side_length_km=self.buffer_size_km,
-        )
+        buffer_aoi = self._get_buffer_aoi_polygon()
+        if buffer_aoi is None:
+            return None
 
         dem_filename = f"dem_buffer_{self.scene_name}_{self.buffer_resolution_m}m.zarr"
         dem_output_path = self.data_dir / dem_filename
@@ -268,11 +296,9 @@ class SceneGenerationPipeline:
 
         logging.info("=== Processing Buffer Land Cover Data ===")
 
-        buffer_aoi = create_aoi_polygon(
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            side_length_km=self.buffer_size_km,
-        )
+        buffer_aoi = self._get_buffer_aoi_polygon()
+        if buffer_aoi is None:
+            return None
 
         landcover_filename = (
             f"landcover_buffer_{self.scene_name}_{self.buffer_resolution_m}m.zarr"
@@ -301,11 +327,9 @@ class SceneGenerationPipeline:
 
         logging.info("=== Processing Background Land Cover Data ===")
 
-        background_aoi = create_aoi_polygon(
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            side_length_km=self.config.buffer.background_size_km,
-        )
+        background_aoi = self._get_background_aoi_polygon()
+        if background_aoi is None:
+            return None
 
         landcover_filename = f"landcover_background_{self.scene_name}_{self.config.buffer.background_resolution_m}m.zarr"
         landcover_output_path = self.data_dir / landcover_filename
@@ -398,6 +422,114 @@ class SceneGenerationPipeline:
         logging.info("Buffer texture generation complete")
         return selection_texture_path, preview_texture_path
 
+    def _process_hamster_data(self) -> Optional[dict]:
+        """Process HAMSTER albedo data for the scene with spatial clipping for each surface area.
+        
+        Returns:
+            Dict with paths to saved HAMSTER albedo zarr files for each surface area, or None
+            Format: {'target': target_path, 'buffer': buffer_path, 'background': bg_path}
+        """
+        if self.config.hamster is None or not self.config.hamster.enabled:
+            return None
+            
+        try:
+            logging.info("Processing HAMSTER albedo data...")
+            
+            hamster_path = self.config.hamster.data_path
+            if not hamster_path.exists():
+                if self.config.hamster.fallback_on_error:
+                    logging.warning(f"HAMSTER data file not found: {hamster_path}, falling back to standard baresoil")
+                    return None
+                else:
+                    raise FileNotFoundError(f"HAMSTER data file not found: {hamster_path}")
+                    
+            ds = xr.open_dataset(hamster_path)
+            
+            if 'lat' in ds.dims:
+                ds = ds.sel(lat=slice(None, None, -1))
+                
+            if 'lat' in ds.dims and 'lon' in ds.dims:
+                ds = ds.swap_dims({"lat": "latitude", "lon": "longitude"})
+            
+            var_name = self.config.hamster.variable_name
+            if var_name not in ds.data_vars:
+                if self.config.hamster.fallback_on_error:
+                    logging.warning(f"Variable '{var_name}' not found in HAMSTER data, falling back to standard baresoil")
+                    return None
+                else:
+                    raise KeyError(f"Variable '{var_name}' not found in HAMSTER dataset")
+                    
+            albedo_data = ds[var_name]
+            
+            target_aoi_polygon = self._get_target_aoi_polygon()
+            target_bounds = target_aoi_polygon.bounds
+            target_lon_slice = slice(target_bounds[0], target_bounds[2])
+            target_lat_slice = slice(target_bounds[3], target_bounds[1])
+            
+            result = {}
+            
+            if 'latitude' in albedo_data.dims and 'longitude' in albedo_data.dims:
+                target_subset = albedo_data.sel(longitude=target_lon_slice, latitude=target_lat_slice)
+                target_dataset = target_subset.to_dataset(name=var_name)
+                target_filename = f"hamster_{self.scene_name}_target_{self.target_resolution_m}m.zarr"
+                target_path = self.data_dir / target_filename
+                self._save_hamster_dataset(target_dataset, target_path)
+                result['target'] = target_path
+                logging.info(f"Saved HAMSTER data for target area: {target_subset.sizes} -> {target_path}")
+                
+                if self.enable_buffer and self.buffer_size_km:
+                    buffer_aoi_polygon = self._get_buffer_aoi_polygon()
+                    if buffer_aoi_polygon is None:
+                        logging.warning("Buffer AOI polygon could not be created")
+                    else:
+                        buffer_bounds = buffer_aoi_polygon.bounds
+                        buffer_lon_slice = slice(buffer_bounds[0], buffer_bounds[2])
+                        buffer_lat_slice = slice(buffer_bounds[3], buffer_bounds[1])
+                        
+                        buffer_subset = albedo_data.sel(longitude=buffer_lon_slice, latitude=buffer_lat_slice)
+                        buffer_dataset = buffer_subset.to_dataset(name=var_name)
+                        buffer_filename = f"hamster_{self.scene_name}_buffer_{self.buffer_resolution_m}m.zarr"
+                        buffer_path = self.data_dir / buffer_filename
+                        self._save_hamster_dataset(buffer_dataset, buffer_path)
+                        result['buffer'] = buffer_path
+                        logging.info(f"Saved HAMSTER data for buffer area: {buffer_subset.sizes} -> {buffer_path}")
+                        
+                        if hasattr(self.config.buffer, 'background_size_km') and self.config.buffer.background_size_km:
+                            bg_aoi_polygon = self._get_background_aoi_polygon()
+                            if bg_aoi_polygon is None:
+                                logging.warning("Background AOI polygon could not be created")
+                            else:
+                                bg_bounds = bg_aoi_polygon.bounds
+                                bg_lon_slice = slice(bg_bounds[0], bg_bounds[2])
+                                bg_lat_slice = slice(bg_bounds[3], bg_bounds[1])
+                                
+                                bg_subset = albedo_data.sel(longitude=bg_lon_slice, latitude=bg_lat_slice)
+                                bg_dataset = bg_subset.to_dataset(name=var_name)
+                                bg_filename = f"hamster_{self.scene_name}_background_{self.config.buffer.background_resolution_m}m.zarr"
+                                bg_path = self.data_dir / bg_filename
+                                self._save_hamster_dataset(bg_dataset, bg_path)
+                                result['background'] = bg_path
+                                logging.info(f"Saved HAMSTER data for background area: {bg_subset.sizes} -> {bg_path}")
+            
+            logging.info(f"Successfully processed and saved HAMSTER data for {len(result)} surface areas")
+            return result if result else None
+            
+        except Exception as e:
+            if self.config.hamster.fallback_on_error:
+                logging.warning(f"Could not load HAMSTER data: {e}, falling back to standard baresoil")
+                return None
+            else:
+                raise ProcessingError(f"Failed to load HAMSTER data: {e}", "hamster_processing", e) from e
+
+    def _save_hamster_dataset(self, dataset: xr.Dataset, output_path: UPath) -> None:
+        """Save HAMSTER dataset to zarr format."""
+        logging.info(f"Saving processed HAMSTER albedo data to '{output_path}'")
+        from s2gos_utils.io.paths import mkdir
+
+        mkdir(output_path.parent)
+        dataset.to_zarr(output_path, mode="w")
+        logging.info("HAMSTER albedo data saved successfully.")
+
     def _create_scene_description(self) -> SceneDescription:
         """Create complete scene description from generated assets."""
         buffer_mesh_path = None
@@ -441,6 +573,10 @@ class SceneGenerationPipeline:
             )
             background_size_km = self.config.buffer.background_size_km
 
+        hamster_data_paths = None
+        if self.config.hamster is not None and self.config.hamster.enabled:
+            hamster_data_paths = self._process_hamster_data()
+
         return create_s2gos_scene(
             scene_name=self.scene_name,
             mesh_path=str(self.assets.mesh_file.relative_to(self.output_dir)),
@@ -463,6 +599,7 @@ class SceneGenerationPipeline:
             landcover_index_path=landcover_index_path,
             material_config_path=material_config_path,
             atmosphere_config=self.atmosphere_config,
+            hamster_data_paths=hamster_data_paths,
         )
 
     def run_full_pipeline(self) -> SceneDescription:

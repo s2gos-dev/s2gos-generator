@@ -365,6 +365,31 @@ class BufferConfig(BaseModel):
         return self
 
 
+class HamsterConfig(BaseModel):
+    """HAMSTER albedo data configuration for baresoil material replacement."""
+
+    enabled: bool = Field(True, description="Enable HAMSTER albedo for baresoil")
+    data_path: UPath = Field(..., description="Path to HAMSTER NetCDF data file")
+    variable_name: str = Field("albedo", description="Variable name in NetCDF file")
+    fallback_on_error: bool = Field(
+        True, description="Fall back to standard baresoil material on errors"
+    )
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "json_encoders": {UPath: lambda v: str(v)},
+    }
+
+    @field_validator("data_path", mode="before")
+    @classmethod
+    def validate_data_path(cls, v):
+        """Validate HAMSTER data file exists."""
+        v = UPath(v)
+        if not exists(v):
+            raise ValueError(f"HAMSTER data file not found: {v}")
+        return v
+
+
 class SceneGenConfig(BaseModel):
     """
     Comprehensive scene configuration using Pydantic.
@@ -392,6 +417,9 @@ class SceneGenConfig(BaseModel):
     )
     buffer: Optional[BufferConfig] = Field(
         None, description="Buffer and background configuration"
+    )
+    hamster: Optional[HamsterConfig] = Field(
+        None, description="HAMSTER albedo data configuration for baresoil"
     )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"
@@ -468,6 +496,30 @@ class SceneGenConfig(BaseModel):
     def disable_buffer_system(self):
         """Disable buffer/background system."""
         self.buffer = None
+
+    def enable_hamster_albedo(
+        self,
+        data_path: UPath,
+        variable_name: str = "albedo",
+        fallback_on_error: bool = True,
+    ):
+        """Enable HAMSTER albedo data for baresoil material replacement.
+        
+        Args:
+            data_path: Path to HAMSTER NetCDF data file
+            variable_name: Variable name in NetCDF file (default: "albedo")
+            fallback_on_error: Fall back to standard baresoil material on errors
+        """
+        self.hamster = HamsterConfig(
+            enabled=True,
+            data_path=data_path,
+            variable_name=variable_name,
+            fallback_on_error=fallback_on_error,
+        )
+
+    def disable_hamster_albedo(self):
+        """Disable HAMSTER albedo system."""
+        self.hamster = None
 
     def set_atmosphere_homogeneous(
         self,

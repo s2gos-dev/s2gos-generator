@@ -5,12 +5,13 @@ import json
 import os
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
 from s2gos_utils.io.paths import exists, open_file, read_yaml
 from s2gos_utils.io.resolver import resolver
+from s2gos_utils.scene import parse_mitsuba_xml_to_individual_assets
 from upath import UPath
 
 from .._version import get_version
@@ -390,6 +391,75 @@ class HamsterConfig(BaseModel):
         return v
 
 
+
+class UserAssets(BaseModel):
+    """User assets to be placed on scene"""
+
+    object_id: str = Field(..., description="Unique identifier for the object")
+    ply_path: UPath = Field(..., description="Path to PLY file containing 3D object geometry")
+    coordinate: list[float] = Field(..., description="Object placement coordinates [lon, lat]")
+    material: Union[str, Dict[str, Any]] = Field(..., description="Material reference (string) OR material definition (dict)")
+    elevation_offset: float = Field(0.0, description="Height offset above terrain surface in meters")
+    scale: float = Field(1.0, description="Uniform scaling factor for the object")
+    rotation_x: float = Field(0.0, description="Rotation around X-axis in degrees")
+    rotation_y: float = Field(0.0, description="Rotation around Y-axis in degrees") 
+    rotation_z: float = Field(0.0, description="Rotation around Z-axis in degrees")
+
+    @field_validator("coordinate")
+    @classmethod
+    def validate_coordinate(cls, v):
+        """Validate coordinate format."""
+        if len(v) != 2:
+            raise ValueError("Coordinate must be [longitude, latitude]")
+        lon, lat = v
+        if not (-180 <= lon <= 180):
+            raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+        if not (-90 <= lat <= 90):
+            raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+        return v
+
+    @field_validator("ply_path", mode="before")
+    @classmethod
+    def validate_ply_path(cls, v):
+        """Validate PLY file exists."""
+        v = UPath(v)
+        if not exists(v):
+            raise ValueError(f"PLY file not found: {v}")
+        return v
+
+    @field_validator("material")
+    @classmethod
+    def validate_material(cls, v):
+        """Validate material reference or definition."""
+        if isinstance(v, str):
+            if not v.strip():
+                raise ValueError("Material reference cannot be empty")
+        elif isinstance(v, dict):
+            if "type" not in v:
+                raise ValueError("Material definition must contain 'type' field")
+            valid_types = {"diffuse", "rpv", "bilambertian", "ocean_legacy"}
+            if v["type"] not in valid_types:
+                raise ValueError(f"Material type '{v['type']}' not recognized. Valid types: {valid_types}")
+        else:
+            raise ValueError("Material must be string reference or dict definition")
+        return v
+
+    @field_validator("scale")
+    @classmethod
+    def validate_scale(cls, v):
+        """Validate scale is positive."""
+        if v <= 0:
+            raise ValueError("Scale must be positive")
+        return v
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "json_encoders": {UPath: lambda v: str(v)},
+        "validate_assignment": True,
+        "extra": "forbid",
+    }
+
+
 class SceneGenConfig(BaseModel):
     """
     Comprehensive scene configuration using Pydantic.
@@ -420,6 +490,9 @@ class SceneGenConfig(BaseModel):
     )
     hamster: Optional[HamsterConfig] = Field(
         None, description="HAMSTER albedo data configuration for baresoil"
+    )
+    user_assets: list[UserAssets] = Field(
+        [], description="User assets to be placed in generated scene"
     )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"
@@ -604,10 +677,7 @@ def create_scene_config(
     atmosphere: Optional[AtmosphereConfig] = None,
     **kwargs,
 ) -> SceneGenConfig:
-    """Revolutionary scene configuration using PathResolver.
-
-    This modern approach eliminates verbose conditional logic and uses the
-    global resolver to find data files elegantly.
+    """Scene generation configuration using PathResolver.
 
     Args:
         scene_name: Scene name (used for output files)
@@ -777,3 +847,71 @@ def create_heterogeneous_atmosphere_config(
         toa=toa,
         details=heterogeneous_config,
     )
+
+
+def load_assets_from_xml(
+    xml_path: str,
+    base_coordinate: List[float],
+    object_id_prefix: str = "asset",
+    elevation_offset: float = 0.0,
+    scale: float = 1.0,
+    fix_blender_coords: bool = True,
+    material_mappings: Optional[Dict[str, str]] = None,
+    pattern_type: str = "wildcard"
+) -> List[UserAssets]:
+    """Load multi-material assets from Mitsuba XML and convert to UserAssets.
+    Each PLY file becomes individual UserAssets with same transform for alignment.
+    
+    Args:
+        xml_path: Path to Mitsuba XML file
+        base_coordinate: [longitude, latitude] for all asset components
+        object_id_prefix: Prefix for asset IDs
+        elevation_offset: Height offset above terrain (meters)
+        scale: Uniform scaling factor
+        fix_blender_coords: Apply Blender→Mitsuba coordinate correction (90° X rotation)
+        material_mappings: Dict mapping filename patterns to S2GOS material names
+        pattern_type: "wildcard", "exact", or "contains" matching for material_mappings
+        
+    Returns:
+        List of UserAssets, one per PLY file
+        
+    Example:
+        assets = load_assets_from_xml(
+            "fence.xml",
+            base_coordinate=[15.1258741, -23.6015431],
+            material_mappings={
+                "Post_*": "concrete",
+                "*Wire*": "baresoil",
+                "gate": "treecover"
+            }
+        )
+    """
+    # Parse XML to get all individual asset data
+    asset_data_list = parse_mitsuba_xml_to_individual_assets(
+        xml_path=xml_path,
+        base_coordinate=base_coordinate,
+        object_id_prefix=object_id_prefix,
+        elevation_offset=elevation_offset,
+        scale=scale,
+        fix_blender_coords=fix_blender_coords,
+        material_mappings=material_mappings,
+        pattern_type=pattern_type
+    )
+    
+    # Convert asset data to UserAssets objects
+    assets = []
+    for asset_data in asset_data_list:
+        asset = UserAssets(
+            object_id=asset_data['object_id'],
+            ply_path=UPath(asset_data['ply_path']),
+            coordinate=asset_data['coordinate'],
+            material=asset_data['material'],
+            elevation_offset=asset_data['elevation_offset'],
+            scale=asset_data['scale'],
+            rotation_x=asset_data['rotation_x'],
+            rotation_y=asset_data['rotation_y'],
+            rotation_z=asset_data['rotation_z'],
+        )
+        assets.append(asset)
+    
+    return assets

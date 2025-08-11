@@ -530,7 +530,76 @@ class SceneGenerationPipeline:
         dataset.to_zarr(output_path, mode="w")
         logging.info("HAMSTER albedo data saved successfully.")
 
-    def _create_scene_description(self) -> SceneDescription:
+    def process_user_assets(self) -> Optional[list]:
+        """Process user assets (3D objects) for placement in the scene.
+        
+        Returns:
+            List of processed object data dictionaries, or None if no objects
+        """
+        if not self.config.user_assets:
+            return None
+            
+        logging.info(f"=== Processing {len(self.config.user_assets)} user assets ===")
+        
+        from ..utils.geometry import latlon_to_scene_coordinates, query_elevation_at_coordinate
+        from s2gos_utils.io.paths import mkdir
+        import shutil
+        
+        processed_objects = []
+        
+        objects_dir = self.output_dir / "objects"
+        mkdir(objects_dir)
+        
+        for i, asset in enumerate(self.config.user_assets):
+            try:
+                logging.info(f"Processing object {i+1}/{len(self.config.user_assets)}: {asset.object_id}")
+                
+                lon, lat = asset.coordinate
+                scene_x, scene_y = latlon_to_scene_coordinates(
+                    target_lat=lat,
+                    target_lon=lon,
+                    scene_center_lat=self.center_lat,
+                    scene_center_lon=self.center_lon
+                )
+                
+                if not self.assets.dem_file:
+                    raise ProcessingError("DEM data not available for elevation querying", "user_assets", None)
+                    
+                elevation = query_elevation_at_coordinate(
+                    dem_zarr_path=self.assets.dem_file,
+                    latitude=lat,
+                    longitude=lon,
+                    scene_center_lat=self.center_lat,
+                    scene_center_lon=self.center_lon
+                )
+                
+                final_z = elevation + asset.elevation_offset
+                
+                ply_filename = f"{asset.object_id}.ply"
+                output_ply_path = objects_dir / ply_filename
+                shutil.copy2(asset.ply_path, output_ply_path)
+                
+                object_data = {
+                    "id": asset.object_id,
+                    "mesh": f"objects/{ply_filename}",
+                    "position": [scene_x, scene_y, final_z],
+                    "scale": asset.scale,
+                    "rotation": [asset.rotation_x, asset.rotation_y, asset.rotation_z]
+                }
+                
+                if asset.material:
+                    object_data["material"] = asset.material
+                
+                processed_objects.append(object_data)
+                logging.info(f"Processed object {asset.object_id}: position=({scene_x:.2f}, {scene_y:.2f}, {final_z:.2f})")
+                
+            except Exception as e:
+                raise ProcessingError(f"Failed to process user asset {asset.object_id}: {e}", "user_assets", e) from e
+        
+        logging.info(f"Successfully processed {len(processed_objects)} user assets")
+        return processed_objects
+
+    def _create_scene_description(self, processed_objects: Optional[list] = None) -> SceneDescription:
         """Create complete scene description from generated assets."""
         buffer_mesh_path = None
         buffer_texture_path = None
@@ -600,6 +669,7 @@ class SceneGenerationPipeline:
             material_config_path=material_config_path,
             atmosphere_config=self.atmosphere_config,
             hamster_data_paths=hamster_data_paths,
+            processed_objects=processed_objects,
         )
 
     def run_full_pipeline(self) -> SceneDescription:
@@ -630,7 +700,9 @@ class SceneGenerationPipeline:
                 if background_landcover_file:
                     self.generate_background_textures(background_landcover_file)
 
-            scene_description = self._create_scene_description()
+            processed_objects = self.process_user_assets()
+
+            scene_description = self._create_scene_description(processed_objects)
             scene_description_file = self.output_dir / f"{self.scene_name}.yml"
             scene_description.save_yaml(scene_description_file)
 

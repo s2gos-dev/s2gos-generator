@@ -1,7 +1,9 @@
 """Geometry utilities for S2GOS scene generation."""
 
+import xarray as xr
 from pyproj import CRS, Transformer
 from shapely.geometry import Polygon
+from upath import UPath
 
 
 def create_aoi_polygon(
@@ -42,3 +44,91 @@ def create_aoi_polygon(
     lon_lat_coords = [transformer_from_local.transform(x, y) for x, y in local_corners]
 
     return Polygon(lon_lat_coords)
+
+
+def latlon_to_scene_coordinates(
+    target_lat: float,
+    target_lon: float,
+    scene_center_lat: float,
+    scene_center_lon: float
+) -> tuple[float, float]:
+    """Convert lat/lon coordinates to scene-local coordinates in meters.
+    
+    Args:
+        target_lat: Latitude of the target point in degrees
+        target_lon: Longitude of the target point in degrees  
+        scene_center_lat: Latitude of scene center in degrees
+        scene_center_lon: Longitude of scene center in degrees
+        
+    Returns:
+        Tuple of (x, y) coordinates in meters relative to scene center
+    """
+    wgs84_crs = CRS("EPSG:4326")
+    local_azimuthal_crs = CRS(
+        f"+proj=aeqd +lat_0={scene_center_lat} +lon_0={scene_center_lon} +ellps=WGS84 +units=m"
+    )
+    
+    transformer_to_local = Transformer.from_crs(
+        wgs84_crs, local_azimuthal_crs, always_xy=True
+    )
+    
+    # Transform scene center to local coordinates (should be ~0, 0)
+    center_x, center_y = transformer_to_local.transform(scene_center_lon, scene_center_lat)
+    
+    # Transform target coordinates to local coordinates
+    target_x, target_y = transformer_to_local.transform(target_lon, target_lat)
+    
+    # Return coordinates relative to scene center
+    return (target_x - center_x, target_y - center_y)
+
+
+def query_elevation_at_coordinate(
+    dem_zarr_path: UPath,
+    latitude: float, 
+    longitude: float,
+    scene_center_lat: float,
+    scene_center_lon: float
+) -> float:
+    """Query elevation from DEM dataset at a specific coordinate.
+    
+    Args:
+        dem_zarr_path: Path to the DEM zarr dataset
+        latitude: Latitude coordinate in degrees
+        longitude: Longitude coordinate in degrees
+        scene_center_lat: Scene center latitude for coordinate transformation
+        scene_center_lon: Scene center longitude for coordinate transformation
+        
+    Returns:
+        Elevation value in meters
+    """
+    # Load the DEM dataset
+    dem_dataset = xr.open_zarr(dem_zarr_path)
+    elevation_data = dem_dataset["elevation"]
+    
+    # Convert lat/lon to scene-local coordinates (same as DEM coordinate system)
+    scene_x, scene_y = latlon_to_scene_coordinates(
+        target_lat=latitude,
+        target_lon=longitude,
+        scene_center_lat=scene_center_lat,
+        scene_center_lon=scene_center_lon
+    )
+    
+    # Use nearest neighbor interpolation to get elevation at coordinate
+    # This handles cases where the exact coordinate isn't on the grid
+    try:
+        elevation = elevation_data.sel(
+            x=scene_x,
+            y=scene_y, 
+            method="nearest"
+        ).values
+        
+        # Convert to float if it's a numpy scalar
+        elevation = float(elevation.item() if hasattr(elevation, 'item') else elevation)
+        
+        return elevation
+        
+    except (KeyError, IndexError) as e:
+        raise ValueError(
+            f"Could not query elevation at ({latitude}, {longitude}) -> ({scene_x}, {scene_y}). "
+            f"Coordinate may be outside DEM bounds. Error: {e}"
+        )

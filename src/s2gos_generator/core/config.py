@@ -5,13 +5,13 @@ import json
 import os
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
 from s2gos_utils.io.paths import exists, open_file, read_yaml
 from s2gos_utils.io.resolver import resolver
-from s2gos_utils.scene import parse_mitsuba_xml_to_individual_assets
+from s2gos_utils.scene.materials import Material
 from upath import UPath
 
 from .._version import get_version
@@ -393,12 +393,12 @@ class HamsterConfig(BaseModel):
 
 
 class UserAssets(BaseModel):
-    """User assets to be placed on scene"""
+    """User assets to be placed on scene."""
 
     object_id: str = Field(..., description="Unique identifier for the object")
     ply_path: UPath = Field(..., description="Path to PLY file containing 3D object geometry")
     coordinate: list[float] = Field(..., description="Object placement coordinates [lon, lat]")
-    material: Union[str, Dict[str, Any]] = Field(..., description="Material reference (string) OR material definition (dict)")
+    material: str = Field(..., description="Material reference (string ID) - must exist in scene material library")
     elevation_offset: float = Field(0.0, description="Height offset above terrain surface in meters")
     scale: float = Field(1.0, description="Uniform scaling factor for the object")
     rotation_x: float = Field(0.0, description="Rotation around X-axis in degrees")
@@ -430,19 +430,16 @@ class UserAssets(BaseModel):
     @field_validator("material")
     @classmethod
     def validate_material(cls, v):
-        """Validate material reference or definition."""
-        if isinstance(v, str):
-            if not v.strip():
-                raise ValueError("Material reference cannot be empty")
-        elif isinstance(v, dict):
-            if "type" not in v:
-                raise ValueError("Material definition must contain 'type' field")
-            valid_types = {"diffuse", "rpv", "bilambertian", "ocean_legacy"}
-            if v["type"] not in valid_types:
-                raise ValueError(f"Material type '{v['type']}' not recognized. Valid types: {valid_types}")
-        else:
-            raise ValueError("Material must be string reference or dict definition")
-        return v
+        """Validate material reference is a non-empty string."""
+        if not isinstance(v, str):
+            raise ValueError(
+                f"Material must be a string reference, got {type(v).__name__}. "
+                "Inline material definitions are no longer supported. "
+                "Define materials in the scene's material library."
+            )
+        if not v.strip():
+            raise ValueError("Material reference cannot be empty")
+        return v.strip()
 
     @field_validator("scale")
     @classmethod
@@ -636,6 +633,21 @@ class SceneGenConfig(BaseModel):
         if self.buffer:
             if self.buffer.buffer_size_km <= self.location.aoi_size_km:
                 errors.append("Buffer size must be larger than AOI size")
+
+        if hasattr(self, '_xml_materials') and self._xml_materials:
+            available_materials = set(self._xml_materials.keys())
+            available_materials.update([
+                'concrete', 'treecover', 'shrubland', 'baresoil', 'grassland', 
+                'wetland', 'cropland', 'mangroves', 'snow', 'moss', 'water'
+            ])
+            
+            for asset in self.user_assets:
+                if asset.material not in available_materials:
+                    available_list = sorted(available_materials)
+                    errors.append(
+                        f"Asset '{asset.object_id}' references unknown material '{asset.material}'. "
+                        f"Available materials: {available_list}"
+                    )
 
         return errors
 
@@ -857,10 +869,10 @@ def load_assets_from_xml(
     scale: float = 1.0,
     fix_blender_coords: bool = True,
     material_mappings: Optional[Dict[str, str]] = None,
-    pattern_type: str = "wildcard"
-) -> List[UserAssets]:
-    """Load multi-material assets from Mitsuba XML and convert to UserAssets.
-    Each PLY file becomes individual UserAssets with same transform for alignment.
+    pattern_type: str = "wildcard",
+    validate_materials: bool = True
+) -> Tuple[List[UserAssets], Dict[str, Dict[str, Any]]]:
+    """Load multi-material assets from Mitsuba XML with material library.
     
     Args:
         xml_path: Path to Mitsuba XML file
@@ -871,23 +883,27 @@ def load_assets_from_xml(
         fix_blender_coords: Apply Blender→Mitsuba coordinate correction (90° X rotation)
         material_mappings: Dict mapping filename patterns to S2GOS material names
         pattern_type: "wildcard", "exact", or "contains" matching for material_mappings
+        validate_materials: If True, validate material references and PLY file existence
         
     Returns:
-        List of UserAssets, one per PLY file
+        Tuple of (assets_list, material_library):
+        - assets_list: List of UserAssets with string material references
+        - material_library: Dict of material definitions to embed in scene
         
     Example:
-        assets = load_assets_from_xml(
+        assets, materials = load_assets_from_xml(
             "fence.xml",
             base_coordinate=[15.1258741, -23.6015431],
             material_mappings={
-                "Post_*": "concrete",
-                "*Wire*": "baresoil",
-                "gate": "treecover"
+                "Post_*": "concrete",  # Reference to scene material library
+                "*Wire*": "metal_wire", # Will use XML material if available
             }
         )
     """
-    # Parse XML to get all individual asset data
-    asset_data_list = parse_mitsuba_xml_to_individual_assets(
+    # Import using new XML importer
+    from ..assets.xml_importer import import_xml_assets
+    
+    asset_data_list, material_library = import_xml_assets(
         xml_path=xml_path,
         base_coordinate=base_coordinate,
         object_id_prefix=object_id_prefix,
@@ -895,7 +911,8 @@ def load_assets_from_xml(
         scale=scale,
         fix_blender_coords=fix_blender_coords,
         material_mappings=material_mappings,
-        pattern_type=pattern_type
+        pattern_type=pattern_type,
+        validate_materials=validate_materials
     )
     
     # Convert asset data to UserAssets objects
@@ -905,7 +922,7 @@ def load_assets_from_xml(
             object_id=asset_data['object_id'],
             ply_path=UPath(asset_data['ply_path']),
             coordinate=asset_data['coordinate'],
-            material=asset_data['material'],
+            material=asset_data['material'],  # Now guaranteed to be string reference
             elevation_offset=asset_data['elevation_offset'],
             scale=asset_data['scale'],
             rotation_x=asset_data['rotation_x'],
@@ -914,4 +931,4 @@ def load_assets_from_xml(
         )
         assets.append(asset)
     
-    return assets
+    return assets, material_library

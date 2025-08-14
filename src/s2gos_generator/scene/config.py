@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from s2gos_utils.scene import SceneDescription
 from s2gos_utils.scene.materials import Material, get_landcover_mapping, load_materials
@@ -124,6 +124,7 @@ def create_s2gos_scene(
     background_selection_texture: Optional[str] = None,
     background_size_km: Optional[float] = None,
     hamster_data_paths: Optional[Dict[str, UPath]] = None,
+    additional_material_libraries: Optional[List[Dict[str, Dict[str, Any]]]] = None,
     **kwargs,
 ) -> SceneDescription:
     """Create standard S2GOS scene configuration.
@@ -148,6 +149,7 @@ def create_s2gos_scene(
         background_selection_texture: Optional path to background selection texture file
         background_size_km: Optional background size in kilometers
         hamster_data_paths: Optional dictionary of paths to processed HAMSTER albedo zarr files for each surface area
+        additional_material_libraries: Optional list of material libraries to merge (e.g., from XML imports)
         **kwargs: Additional configuration parameters
 
     Returns:
@@ -276,6 +278,13 @@ def create_s2gos_scene(
             background = None
 
     materials = load_materials(material_config_path)
+    
+    if additional_material_libraries:
+        for library in additional_material_libraries:
+            for mat_id, mat_def in library.items():
+                if mat_id in materials:
+                    print(f"Warning: Material '{mat_id}' from additional library overwrites existing material.")
+                materials[mat_id] = Material.from_dict(mat_def, id=mat_id)
 
     if material_overrides:
         for material_id, overrides in material_overrides.items():

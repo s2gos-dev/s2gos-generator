@@ -19,10 +19,16 @@ from ..utils import create_aoi_polygon
 class SceneGenerationPipeline:
     """Main pipeline orchestrator for generating 3D scenes from earth observation data."""
 
-    def __init__(self, config: SceneGenConfig):
-        """Initialize the pipeline with a configuration object."""
+    def __init__(self, config: SceneGenConfig, additional_material_libraries=None):
+        """Initialize the pipeline with a configuration object.
+        
+        Args:
+            config: Scene generation configuration
+            additional_material_libraries: Optional list of material libraries to merge into scene
+        """
         self.config = config
         self.assets = SceneAssets()
+        self.additional_material_libraries = additional_material_libraries or []
 
         dem_index_path = config.data_sources.dem_index_path
         dem_root_dir = config.data_sources.dem_root_dir
@@ -670,6 +676,7 @@ class SceneGenerationPipeline:
             atmosphere_config=self.atmosphere_config,
             hamster_data_paths=hamster_data_paths,
             processed_objects=processed_objects,
+            additional_material_libraries=self.additional_material_libraries,
         )
 
     def run_full_pipeline(self) -> SceneDescription:

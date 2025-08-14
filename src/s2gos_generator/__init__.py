@@ -3,6 +3,7 @@ import logging
 from s2gos_utils.scene import SceneDescription
 
 from .core import SceneGenConfig, SceneGenerationPipeline
+from .core.config import create_scene_config
 from .core.exceptions import (
     ConfigurationError,
     DataNotFoundError,
@@ -37,6 +38,7 @@ __all__ = [
     "SceneGenerationPipeline",
     "SceneAssets",
     "SceneDescription",
+    "create_scene_config",
     "create_s2gos_scene",
     "S2GOSError",
     "DataNotFoundError",

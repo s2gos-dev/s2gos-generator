@@ -5,10 +5,10 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from s2gos_generator.core import SceneGenerationPipeline
+from s2gos_generator import SceneGenerationPipeline
 from s2gos_generator.core.config import (
-    SceneGenConfig, create_scene_config, 
-    AtmosphereConfig, AtmosphereType, MolecularAtmosphereConfig, HomogeneousAtmosphereConfig, 
+    create_scene_config, 
+    MolecularAtmosphereConfig, HomogeneousAtmosphereConfig, 
     HeterogeneousAtmosphereConfig, ThermophysicalConfig, ParticleLayerConfig,
     AbsorptionDatabase, AerosolDataset, ExponentialDistribution
 )
@@ -16,8 +16,8 @@ from s2gos_generator.core.config import (
 
 def simple_scene_generation_example():
     """Generate a simple scene using S2GOS scene generator."""
-    print("S2GOS Scene Generation Example")
-    print("=" * 40)
+    print("S2GOS Scene Generation Example (DAG-based)")
+    print("=" * 50)
     print("Target: 10km x 10km at 30m resolution")
     print("Buffer: 60km at 100m resolution")
     print("Background: 200m resolution")
@@ -68,7 +68,7 @@ def simple_scene_generation_example():
         particle_layers=[hazy_layer]
     )
     
-    print("Advanced configuration created (with buffer/background and atmosphere)")
+    print("DAG-based configuration created (with buffer/background and atmosphere)")
     
     # Validate configuration
     errors = config.validate_configuration()
@@ -90,7 +90,19 @@ def simple_scene_generation_example():
     print(f"  Output: {config.scene_output_dir}")
     
     try:
+        # Create DAG-based pipeline  
         pipeline = SceneGenerationPipeline(config)
+        
+        # Show DAG structure
+        print("\nDAG Resource Dependencies:")
+        pipeline.print_resource_summary()
+        
+        # Generate DAG visualization
+        dag_viz_path = pipeline.visualize_dag()
+        if dag_viz_path:
+            print(f"DAG visualization saved to: {dag_viz_path}")
+        
+        # Execute the pipeline
         scene_description = pipeline.run_full_pipeline()
         
         print(f"\nSuccess! Scene generated: {scene_description.name}")

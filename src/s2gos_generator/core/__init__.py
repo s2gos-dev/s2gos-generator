@@ -1,5 +1,6 @@
 from .assets import SceneAssets
 from .config import SceneGenConfig
+from .context import SceneResourceContext
 from .exceptions import (
     ConfigurationError,
     DataNotFoundError,
@@ -15,6 +16,7 @@ __all__ = [
     "SceneGenConfig",
     "SceneGenerationPipeline",
     "SceneAssets",
+    "SceneResourceContext",
     "S2GOSError",
     "DataNotFoundError",
     "ConfigurationError",

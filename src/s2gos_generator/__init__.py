@@ -2,7 +2,7 @@ import logging
 
 from s2gos_utils.scene import SceneDescription
 
-from .core import SceneGenConfig, SceneGenerationPipeline
+from .core import SceneGenConfig, SceneGenerationPipeline, SceneResourceContext
 from .core.config import create_scene_config
 from .core.exceptions import (
     ConfigurationError,
@@ -36,6 +36,7 @@ def __getattr__(name):
 __all__ = [
     "SceneGenConfig",
     "SceneGenerationPipeline",
+    "SceneResourceContext",
     "SceneAssets",
     "SceneDescription",
     "create_scene_config",

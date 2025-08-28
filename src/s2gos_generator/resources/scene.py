@@ -1,94 +1,86 @@
 """Scene description assembly resource."""
 
 import logging
-import sys
 from pathlib import Path
 from typing import Optional
-
-
-resource_graph_path = Path("/home/gonzalezm/s2gos/s2gos_resource_graph/src")
-if str(resource_graph_path) not in sys.path:
-    sys.path.append(str(resource_graph_path))
-
-from ..resource_graph.resource_registry import resource
-from s2gos_utils.scene import SceneDescription
-from upath import UPath
 
 from ..core.context import SceneResourceContext
 from ..scene import create_s2gos_scene
 
 
-@resource(id="scene_description", dependencies=[
-    "target_mesh", "target_texture", 
-    "buffer_mesh", "buffer_texture", 
-    "background_texture",
-    "user_assets", "hamster_data"
-])
 def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
     """Create the complete scene description from all generated assets.
-    
+
     This is the final resource that assembles all processed components
     into a complete S2GOS scene description.
-    
+
     Args:
         ctx: Scene resource context
-        
+
     Returns:
         Path to the generated scene description YAML file
     """
     logging.info("=== Creating Scene Description ===")
-    
+
     # Get required dependencies
     target_mesh_path = ctx.dependency_outputs["target_mesh"]
     target_texture_path = ctx.dependency_outputs["target_texture"]
-    
+
     if target_mesh_path is None or target_texture_path is None:
-        raise ValueError("Required target mesh and texture files not found from dependencies")
-    
+        raise ValueError(
+            "Required target mesh and texture files not found from dependencies"
+        )
+
     # Convert to relative paths
     mesh_path = str(target_mesh_path.relative_to(ctx.output_dir))
     texture_path = str(target_texture_path.relative_to(ctx.output_dir))
-    
+
     # Get optional buffer components
     buffer_mesh_path = None
     buffer_texture_path = None
     buffer_size_km = None
-    
+
     buffer_mesh_file = ctx.dependency_outputs.get("buffer_mesh")
     buffer_texture_file = ctx.dependency_outputs.get("buffer_texture")
-    
-    if (ctx.has_buffer and 
-        buffer_mesh_file is not None and 
-        buffer_texture_file is not None):
+
+    if (
+        ctx.has_buffer
+        and buffer_mesh_file is not None
+        and buffer_texture_file is not None
+    ):
         buffer_mesh_path = str(buffer_mesh_file.relative_to(ctx.output_dir))
         buffer_texture_path = str(buffer_texture_file.relative_to(ctx.output_dir))
         buffer_size_km = ctx.config.buffer.buffer_size_km
-    
+
     # Get optional background components
     background_selection_texture = None
     background_size_km = None
-    
+
     background_texture_file = ctx.dependency_outputs.get("background_texture")
-    if (ctx.has_buffer and 
-        background_texture_file is not None and
-        hasattr(ctx.config.buffer, "background_size_km")):
-        background_selection_texture = str(background_texture_file.relative_to(ctx.output_dir))
+    if (
+        ctx.has_buffer
+        and background_texture_file is not None
+        and hasattr(ctx.config.buffer, "background_size_km")
+    ):
+        background_selection_texture = str(
+            background_texture_file.relative_to(ctx.output_dir)
+        )
         background_size_km = ctx.config.buffer.background_size_km
-    
+
     # Get buffer DEM file for background elevation calculation
     buffer_dem_file = None
     if ctx.has_buffer and ctx.assets.buffer_dem_file:
         buffer_dem_file = str(ctx.assets.buffer_dem_file.relative_to(ctx.output_dir))
-    
+
     # Get processed user assets
-    processed_objects = getattr(ctx, 'processed_objects', None)
-    
+    processed_objects = getattr(ctx, "processed_objects", None)
+
     # Get HAMSTER data paths
-    hamster_data_paths = getattr(ctx, 'hamster_data_paths', None)
-    
+    hamster_data_paths = getattr(ctx, "hamster_data_paths", None)
+
     # Get additional material libraries (if any)
-    additional_material_libraries = getattr(ctx, 'additional_material_libraries', None)
-    
+    additional_material_libraries = getattr(ctx, "additional_material_libraries", None)
+
     # Create scene description using existing function
     scene_description = create_s2gos_scene(
         scene_name=ctx.scene_name,
@@ -103,7 +95,9 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         buffer_size_km=buffer_size_km,
         output_dir=ctx.output_dir,
         buffer_dem_file=buffer_dem_file,
-        background_elevation=ctx.config.buffer.background_elevation if ctx.config.buffer else None,
+        background_elevation=ctx.config.buffer.background_elevation
+        if ctx.config.buffer
+        else None,
         background_selection_texture=background_selection_texture,
         background_size_km=background_size_km,
         dem_index_path=ctx.config.data_sources.dem_index_path,
@@ -114,37 +108,37 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         processed_objects=processed_objects,
         additional_material_libraries=additional_material_libraries,
     )
-    
+
     # Save scene description to file
     scene_description_file = ctx.output_dir / f"{ctx.scene_name}.yml"
     scene_description.save_yaml(scene_description_file)
-    
+
     # Store in assets
     ctx.assets.config_file = scene_description_file
     ctx.assets.scene_description_file = scene_description_file
-    
+
     # Store scene description in context for pipeline return
     ctx.scene_description = scene_description
-    
+
     logging.info("=== Scene Generation Complete ===")
     logging.info(f"Scene description saved to: {scene_description_file}")
-    
+
     # Log summary of generated assets
     logging.info("Generated Assets Summary:")
     logging.info(f"  Target mesh: {target_mesh_path}")
     logging.info(f"  Target texture: {target_texture_path}")
-    
+
     if buffer_mesh_path:
         logging.info(f"  Buffer mesh: {buffer_mesh_file}")
         logging.info(f"  Buffer texture: {buffer_texture_file}")
-    
+
     if background_selection_texture:
         logging.info(f"  Background texture: {background_texture_file}")
-    
+
     if processed_objects:
         logging.info(f"  User assets: {len(processed_objects)} objects")
-    
+
     if hamster_data_paths:
         logging.info(f"  HAMSTER data: {len(hamster_data_paths)} surface areas")
-    
+
     return scene_description_file

@@ -186,12 +186,14 @@ def create_s2gos_scene(
         "selection_texture": texture_path,
         "size_km": aoi_size_km,
     }
-    
-    if hamster_data_paths and 'target' in hamster_data_paths:
+
+    if hamster_data_paths and "target" in hamster_data_paths:
         if output_dir:
-            target["hamster_data"] = str(hamster_data_paths['target'].relative_to(output_dir))
+            target["hamster_data"] = str(
+                hamster_data_paths["target"].relative_to(output_dir)
+            )
         else:
-            target["hamster_data"] = str(hamster_data_paths['target'])
+            target["hamster_data"] = str(hamster_data_paths["target"])
 
     atmosphere_config = kwargs.get("atmosphere_config")
     atmosphere = _convert_atmosphere_config_to_dict(atmosphere_config)
@@ -226,12 +228,14 @@ def create_s2gos_scene(
             "target_size_km": aoi_size_km,
             "mask_texture": str(mask_path.relative_to(output_dir)),
         }
-        
-        if hamster_data_paths and 'buffer' in hamster_data_paths:
+
+        if hamster_data_paths and "buffer" in hamster_data_paths:
             if output_dir:
-                buffer["hamster_data"] = str(hamster_data_paths['buffer'].relative_to(output_dir))
+                buffer["hamster_data"] = str(
+                    hamster_data_paths["buffer"].relative_to(output_dir)
+                )
             else:
-                buffer["hamster_data"] = str(hamster_data_paths['buffer'])
+                buffer["hamster_data"] = str(hamster_data_paths["buffer"])
 
         bg_elevation = 0.0
         if background_elevation is not None:
@@ -268,22 +272,26 @@ def create_s2gos_scene(
                 "elevation": bg_elevation,
                 "size_km": background_size_km,
             }
-            
-            if hamster_data_paths and 'background' in hamster_data_paths:
+
+            if hamster_data_paths and "background" in hamster_data_paths:
                 if output_dir:
-                    background["hamster_data"] = str(hamster_data_paths['background'].relative_to(output_dir))
+                    background["hamster_data"] = str(
+                        hamster_data_paths["background"].relative_to(output_dir)
+                    )
                 else:
-                    background["hamster_data"] = str(hamster_data_paths['background'])
+                    background["hamster_data"] = str(hamster_data_paths["background"])
         else:
             background = None
 
     materials = load_materials(material_config_path)
-    
+
     if additional_material_libraries:
         for library in additional_material_libraries:
             for mat_id, mat_def in library.items():
                 if mat_id in materials:
-                    print(f"Warning: Material '{mat_id}' from additional library overwrites existing material.")
+                    logging.warning(
+                        f"Material '{mat_id}' from additional library overwrites existing material."
+                    )
                 materials[mat_id] = Material.from_dict(mat_def, id=mat_id)
 
     if material_overrides:
@@ -304,13 +312,17 @@ def create_s2gos_scene(
         "landcover_ids": landcover_ids,
         "materials_config_path": str(material_config_path),
     }
-    
+
     processed_objects = kwargs.get("processed_objects", [])
     objects = processed_objects if processed_objects else []
-    
+
     scene_description = SceneDescription(
         name=scene_name,
-        location={"center_lat": center_lat, "center_lon": center_lon, "aoi_size_km": aoi_size_km},
+        location={
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "aoi_size_km": aoi_size_km,
+        },
         resolution_m=resolution_m,
         materials=materials,
         atmosphere=atmosphere,

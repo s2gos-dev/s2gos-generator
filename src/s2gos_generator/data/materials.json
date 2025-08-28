@@ -65,22 +65,10 @@
       }
     },
     "baresoil": {
-      "type": "rpv",
-      "rho_0": {
-        "path": "spectra/spectrum_baresoil_low.nc",
-        "variable": "rho_0"
-      },
-      "k": {
-        "path": "spectra/spectrum_baresoil_low.nc",
-        "variable": "k"
-      },
-      "Theta": {
-        "path": "spectra/spectrum_baresoil_low.nc",
-        "variable": "Theta"
-      },
-      "rho_c": {
-        "path": "spectra/spectrum_baresoil_low.nc",
-        "variable": "rho_c"
+      "type": "diffuse",
+      "reflectance": {
+        "path": "spectra/spectrum_baresoil_high.nc",
+        "variable": "reflectance"
       }
     },
     "wetland": {

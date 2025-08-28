@@ -39,11 +39,9 @@ class BaseTileProcessor(ABC):
                 f"{data_description} root directory not found: {data_root_dir}"
             )
 
-        logging.info(f"Loading {data_description} index file...")
         self.index_gdf = read_geofeather(index_path)
         self.data_root_dir = UPath(data_root_dir)
         self.data_description = data_description
-        logging.info(f"{self.__class__.__name__} initialized successfully.")
 
     @property
     @abstractmethod
@@ -104,9 +102,6 @@ class BaseTileProcessor(ABC):
         relative_paths = selected_products[self.path_column].unique()
         filepaths = [self.data_root_dir / p for p in relative_paths]
 
-        logging.info(
-            f"Found {len(filepaths)} intersecting {self.data_description} tile(s)."
-        )
         return filepaths
 
     def _calculate_optimal_chunk_size(self, num_tiles: int) -> int:
@@ -124,9 +119,6 @@ class BaseTileProcessor(ABC):
         chunk_size = int(base_chunk_size * memory_factor * tile_factor)
         chunk_size = max(512, min(chunk_size, 4096))
 
-        logging.info(
-            f"Memory: {available_memory_gb:.1f}GB, {num_tiles} tiles → chunk size: {chunk_size}x{chunk_size}"
-        )
         return chunk_size
 
     def _merge_tiles(
@@ -145,19 +137,15 @@ class BaseTileProcessor(ABC):
         Returns:
             Merged dataset
         """
-        logging.info(f"Opening {len(tile_paths)} tiles with optimized Dask chunks...")
 
         chunk_size = self._calculate_optimal_chunk_size(len(tile_paths))
 
         bbox = None
         if aoi_polygon:
             bbox = aoi_polygon.bounds
-            logging.info(f"Using AOI bbox for early filtering: {bbox}")
 
         data_arrays = []
         for i, path in enumerate(tile_paths):
-            logging.info(f"Opening tile {i + 1}/{len(tile_paths)}: {path}")
-
             # Open file - use context manager or direct assignment based on processor preference
             if self.use_context_manager:
                 with open_dataarray(
@@ -170,18 +158,13 @@ class BaseTileProcessor(ABC):
                 da = self._process_single_tile(da, bbox)
                 data_arrays.append(da)
 
-        logging.info("Merging tiles into a single dataset...")
         merged_ds = xr.merge(data_arrays, compat="no_conflicts")
-
-        logging.info(f"Merged. Shape: {merged_ds[self.data_variable_name].shape}")
-        logging.info(f"Data type: {type(merged_ds[self.data_variable_name].data)}")
 
         # Apply fill values
         fill_value = (
             fillna_value if fillna_value is not None else self.default_fill_value
         )
         if fill_value is not None:
-            logging.info(f"Filling NaN values with {fill_value}.")
             merged_ds = merged_ds.fillna(fill_value)
 
         return merged_ds
@@ -218,7 +201,6 @@ class BaseTileProcessor(ABC):
         if self.data_type:
             processed = processed.astype(self.data_type)
 
-        logging.info(f"  Chunks: {processed.chunks}")
         return processed
 
     def _regrid_data(
@@ -244,9 +226,8 @@ class BaseTileProcessor(ABC):
 
     def _save_dataset(self, dataset: xr.Dataset, output_path: UPath) -> None:
         """Save dataset to zarr format with proper directory creation."""
-        logging.info(f"Saving processed {self.data_description} to '{output_path}'")
         from s2gos_utils.io.paths import mkdir
 
         mkdir(output_path.parent)
         dataset.to_zarr(output_path, mode="w")
-        logging.info(f"{self.data_description} generation complete.")
+        logging.info(f"{self.data_description} saved to {output_path}")

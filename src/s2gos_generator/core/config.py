@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
 from s2gos_utils.io.paths import exists, open_file, read_yaml
 from s2gos_utils.io.resolver import resolver
-from s2gos_utils.scene.materials import Material
 from upath import UPath
 
 from .._version import get_version
@@ -391,18 +390,26 @@ class HamsterConfig(BaseModel):
         return v
 
 
-
 class UserAssets(BaseModel):
     """User assets to be placed on scene."""
 
     object_id: str = Field(..., description="Unique identifier for the object")
-    ply_path: UPath = Field(..., description="Path to PLY file containing 3D object geometry")
-    coordinate: list[float] = Field(..., description="Object placement coordinates [lon, lat]")
-    material: str = Field(..., description="Material reference (string ID) - must exist in scene material library")
-    elevation_offset: float = Field(0.0, description="Height offset above terrain surface in meters")
+    ply_path: UPath = Field(
+        ..., description="Path to PLY file containing 3D object geometry"
+    )
+    coordinate: list[float] = Field(
+        ..., description="Object placement coordinates [lon, lat]"
+    )
+    material: str = Field(
+        ...,
+        description="Material reference (string ID) - must exist in scene material library",
+    )
+    elevation_offset: float = Field(
+        0.0, description="Height offset above terrain surface in meters"
+    )
     scale: float = Field(1.0, description="Uniform scaling factor for the object")
     rotation_x: float = Field(0.0, description="Rotation around X-axis in degrees")
-    rotation_y: float = Field(0.0, description="Rotation around Y-axis in degrees") 
+    rotation_y: float = Field(0.0, description="Rotation around Y-axis in degrees")
     rotation_z: float = Field(0.0, description="Rotation around Z-axis in degrees")
 
     @field_validator("coordinate")
@@ -457,6 +464,74 @@ class UserAssets(BaseModel):
     }
 
 
+class XmlSceneConfig(BaseModel):
+    """Configuration for importing assets and materials from XML scene files."""
+
+    xml_path: UPath = Field(..., description="Path to XML scene file")
+    base_coordinate: Tuple[float, float] = Field(
+        ..., description="Base geographic coordinate [longitude, latitude]"
+    )
+    object_id_prefix: Optional[str] = Field(
+        None, description="Prefix for asset object IDs"
+    )
+    elevation_offset: float = Field(
+        0.0, description="Global elevation offset for all assets in meters"
+    )
+    scale: float = Field(
+        1.0, gt=0.0, description="Global scaling factor for all assets"
+    )
+    fix_blender_coords: bool = Field(
+        True, description="Apply Blender coordinate system correction"
+    )
+    material_mappings: Optional[Dict[str, str]] = Field(
+        None, description="Material name mapping dictionary"
+    )
+    pattern_type: str = Field(
+        "wildcard", description="Pattern matching type for materials"
+    )
+    validate_materials: bool = Field(
+        True, description="Validate that all materials are properly defined"
+    )
+
+    @field_validator("xml_path", mode="before")
+    @classmethod
+    def validate_xml_path(cls, v):
+        """Validate XML file exists."""
+        v = UPath(v)
+        if not exists(v):
+            raise ValueError(f"XML file not found: {v}")
+        return v
+
+    @field_validator("base_coordinate")
+    @classmethod
+    def validate_base_coordinate(cls, v):
+        """Validate base coordinate format."""
+        if len(v) != 2:
+            raise ValueError("Base coordinate must be [longitude, latitude]")
+        lon, lat = v
+        if not (-180 <= lon <= 180):
+            raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+        if not (-90 <= lat <= 90):
+            raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+        return v
+
+    @field_validator("pattern_type")
+    @classmethod
+    def validate_pattern_type(cls, v):
+        """Validate pattern type is supported."""
+        valid_types = {"wildcard", "exact", "contains"}
+        if v not in valid_types:
+            raise ValueError(f"Pattern type must be one of: {valid_types}")
+        return v
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "json_encoders": {UPath: lambda v: str(v)},
+        "validate_assignment": True,
+        "extra": "forbid",
+    }
+
+
 class SceneGenConfig(BaseModel):
     """
     Comprehensive scene configuration using Pydantic.
@@ -490,6 +565,9 @@ class SceneGenConfig(BaseModel):
     )
     user_assets: list[UserAssets] = Field(
         [], description="User assets to be placed in generated scene"
+    )
+    xml_scenes: list[XmlSceneConfig] = Field(
+        [], description="XML scene files to import for additional assets and materials"
     )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"
@@ -574,7 +652,7 @@ class SceneGenConfig(BaseModel):
         fallback_on_error: bool = True,
     ):
         """Enable HAMSTER albedo data for baresoil material replacement.
-        
+
         Args:
             data_path: Path to HAMSTER NetCDF data file
             variable_name: Variable name in NetCDF file (default: "albedo")
@@ -634,20 +712,9 @@ class SceneGenConfig(BaseModel):
             if self.buffer.buffer_size_km <= self.location.aoi_size_km:
                 errors.append("Buffer size must be larger than AOI size")
 
-        if hasattr(self, '_xml_materials') and self._xml_materials:
-            available_materials = set(self._xml_materials.keys())
-            available_materials.update([
-                'concrete', 'treecover', 'shrubland', 'baresoil', 'grassland', 
-                'wetland', 'cropland', 'mangroves', 'snow', 'moss', 'water'
-            ])
-            
-            for asset in self.user_assets:
-                if asset.material not in available_materials:
-                    available_list = sorted(available_materials)
-                    errors.append(
-                        f"Asset '{asset.object_id}' references unknown material '{asset.material}'. "
-                        f"Available materials: {available_list}"
-                    )
+        for xml_scene_config in self.xml_scenes:
+            if not exists(xml_scene_config.xml_path):
+                errors.append(f"XML file not found: {xml_scene_config.xml_path}")
 
         return errors
 
@@ -870,10 +937,10 @@ def load_assets_from_xml(
     fix_blender_coords: bool = True,
     material_mappings: Optional[Dict[str, str]] = None,
     pattern_type: str = "wildcard",
-    validate_materials: bool = True
+    validate_materials: bool = True,
 ) -> Tuple[List[UserAssets], Dict[str, Dict[str, Any]]]:
     """Load multi-material assets from Mitsuba XML with material library.
-    
+
     Args:
         xml_path: Path to Mitsuba XML file
         base_coordinate: [longitude, latitude] for all asset components
@@ -884,12 +951,12 @@ def load_assets_from_xml(
         material_mappings: Dict mapping filename patterns to S2GOS material names
         pattern_type: "wildcard", "exact", or "contains" matching for material_mappings
         validate_materials: If True, validate material references and PLY file existence
-        
+
     Returns:
         Tuple of (assets_list, material_library):
         - assets_list: List of UserAssets with string material references
         - material_library: Dict of material definitions to embed in scene
-        
+
     Example:
         assets, materials = load_assets_from_xml(
             "fence.xml",
@@ -902,7 +969,7 @@ def load_assets_from_xml(
     """
     # Import using new XML importer
     from ..assets.xml_importer import import_xml_assets
-    
+
     asset_data_list, material_library = import_xml_assets(
         xml_path=xml_path,
         base_coordinate=base_coordinate,
@@ -912,23 +979,23 @@ def load_assets_from_xml(
         fix_blender_coords=fix_blender_coords,
         material_mappings=material_mappings,
         pattern_type=pattern_type,
-        validate_materials=validate_materials
+        validate_materials=validate_materials,
     )
-    
+
     # Convert asset data to UserAssets objects
     assets = []
     for asset_data in asset_data_list:
         asset = UserAssets(
-            object_id=asset_data['object_id'],
-            ply_path=UPath(asset_data['ply_path']),
-            coordinate=asset_data['coordinate'],
-            material=asset_data['material'],  # Now guaranteed to be string reference
-            elevation_offset=asset_data['elevation_offset'],
-            scale=asset_data['scale'],
-            rotation_x=asset_data['rotation_x'],
-            rotation_y=asset_data['rotation_y'],
-            rotation_z=asset_data['rotation_z'],
+            object_id=asset_data["object_id"],
+            ply_path=UPath(asset_data["ply_path"]),
+            coordinate=asset_data["coordinate"],
+            material=asset_data["material"],  # Now guaranteed to be string reference
+            elevation_offset=asset_data["elevation_offset"],
+            scale=asset_data["scale"],
+            rotation_x=asset_data["rotation_x"],
+            rotation_y=asset_data["rotation_y"],
+            rotation_z=asset_data["rotation_z"],
         )
         assets.append(asset)
-    
+
     return assets, material_library

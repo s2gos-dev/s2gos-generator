@@ -92,9 +92,6 @@ class TextureGenerator:
         self.class_to_index = {
             mat["esa_class"]: idx for idx, mat in enumerate(self.materials)
         }
-        logging.info(
-            f"TextureGenerator initialized with {len(self.materials)} materials"
-        )
 
     def landcover_to_selection_texture(
         self,
@@ -115,7 +112,6 @@ class TextureGenerator:
         Returns:
             The selection texture as a numpy array.
         """
-        logging.info("Converting land cover data to selection texture...")
         landcover_data.load()
 
         class_values = landcover_data.values
@@ -127,17 +123,13 @@ class TextureGenerator:
         for esa_class, material_index in self.class_to_index.items():
             mask = class_values == esa_class
             selection_texture[mask] = material_index
-            logging.debug(
-                f"Mapped {np.sum(mask)} pixels from ESA class {esa_class} to material index {material_index}"
-            )
 
         if flip_vertical:
             selection_texture = np.flipud(selection_texture)
-            logging.info("Applied vertical flip for rendering engine compatibility")
 
         self._save_selection_texture(selection_texture, output_path)
 
-        logging.info(f"Selection texture saved to {output_path}")
+        logging.info(f"Texture: {output_path}")
         return selection_texture
 
     def create_preview_texture(
@@ -157,7 +149,6 @@ class TextureGenerator:
         Returns:
             The preview texture as a numpy array with shape (height, width, 3).
         """
-        logging.info("Creating color preview texture...")
         landcover_data.load()
         class_values = landcover_data.values
 
@@ -179,7 +170,6 @@ class TextureGenerator:
 
         self._save_color_texture(color_texture, output_path)
 
-        logging.info(f"Preview texture saved to {output_path}")
         return color_texture
 
     def _save_selection_texture(self, texture: np.ndarray, output_path: UPath) -> None:
@@ -268,7 +258,6 @@ class TextureGenerator:
         Returns:
             Tuple of (selection_texture_path, preview_texture_path).
         """
-        logging.info(f"Loading land cover data from {landcover_file_path}")
 
         landcover_dataset = xr.open_zarr(landcover_file_path)
         landcover_data = landcover_dataset["landcover"]
@@ -292,7 +281,6 @@ class TextureGenerator:
             self.create_preview_texture(landcover_data, preview_path)
 
         analysis = self.analyze_landcover_classes(landcover_data)
-        logging.info(f"Land cover analysis: {analysis['unique_classes']} classes found")
 
         return selection_path, preview_path
 
@@ -310,9 +298,6 @@ class TextureGenerator:
         Returns:
             Path to the generated mask file
         """
-        logging.info(
-            f"Generating buffer mask texture {mask_size}x{mask_size} with {target_size}x{target_size} center hole"
-        )
 
         mask = np.ones((mask_size, mask_size), dtype=np.uint8) * 255
 
@@ -331,6 +316,5 @@ class TextureGenerator:
         mkdir(output_path.parent)
         image = Image.fromarray(mask, mode="L")
         image.save(output_path)
-        logging.info(f"Buffer mask texture saved to {output_path}")
 
         return output_path

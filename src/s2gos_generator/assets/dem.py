@@ -1,4 +1,3 @@
-import logging
 from typing import Optional, Union
 
 import xarray as xr
@@ -68,7 +67,6 @@ class DEMProcessor(BaseTileProcessor):
             and center_lon is not None
             and aoi_size_km is not None
         ):
-            logging.info(f"Regridding DEM to {target_resolution_m}m resolution...")
             merged_dem = self._regrid_data(
                 merged_dem,
                 target_resolution_m,

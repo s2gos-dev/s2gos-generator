@@ -11,13 +11,11 @@ class MeshGenerator:
 
     def __init__(self):
         """Initialize the mesh generator."""
-        logging.info("MeshGenerator initialized.")
 
     def dem_to_mesh(
         self, dem_data: xr.DataArray, handle_nans: bool = True
     ) -> trimesh.Trimesh:
         """Convert a DEM DataArray to a Trimesh object."""
-        logging.info("Converting DEM grid to 3D mesh...")
 
         dem_data.load()
 
@@ -44,17 +42,11 @@ class MeshGenerator:
             valid_vertex_mask = ~np.isnan(vertices[:, 2])
             valid_face_mask = np.all(valid_vertex_mask[faces], axis=1)
             faces = faces[valid_face_mask]
-            logging.info(
-                f"Filtered out {np.sum(~valid_face_mask)} faces with NaN vertices"
-            )
 
         mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
 
         mesh.remove_unreferenced_vertices()
 
-        logging.info(
-            f"Generated mesh with {len(mesh.vertices)} vertices and {len(mesh.faces)} faces"
-        )
         return mesh
 
     def _create_grid_faces(self, nx: int, ny: int) -> np.ndarray:
@@ -87,7 +79,6 @@ class MeshGenerator:
         Returns:
             The mesh with UV coordinates added.
         """
-        logging.info("Adding UV coordinates to mesh...")
 
         bounds = mesh.bounds
         extent = mesh.extents
@@ -103,7 +94,6 @@ class MeshGenerator:
 
         mesh.visual.uv = uv_coords
 
-        logging.info("UV coordinates added successfully")
         return mesh
 
     def save_mesh(
@@ -117,7 +107,6 @@ class MeshGenerator:
             output_path: UPath where the mesh will be saved.
             format: File format (e.g., 'ply', 'obj', 'stl').
         """
-        logging.info(f"Saving mesh to {output_path}")
 
         from s2gos_utils.io.paths import mkdir
 
@@ -127,7 +116,7 @@ class MeshGenerator:
             output_path = output_path.with_suffix(f".{format}")
 
         mesh.export(output_path)
-        logging.info(f"Mesh saved successfully to {output_path}")
+        logging.info(f"Mesh saved to {output_path}")
 
     def generate_mesh_from_dem_file(
         self,
@@ -148,7 +137,6 @@ class MeshGenerator:
         Returns:
             The generated mesh.
         """
-        logging.info(f"Loading DEM from {dem_file_path}")
 
         dem_dataset = xr.open_zarr(dem_file_path)
         dem_data = dem_dataset["elevation"]

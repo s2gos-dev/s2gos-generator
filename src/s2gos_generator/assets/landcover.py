@@ -49,8 +49,6 @@ class LandCoverProcessor(BaseTileProcessor):
     def _clip_to_aoi(self, dataset: xr.Dataset, aoi_polygon: Polygon) -> xr.Dataset:
         """Clip the dataset to the exact AOI geometry."""
         try:
-            logging.info("Clipping dataset to AOI geometry...")
-
             if not hasattr(dataset.rio, "crs") or dataset.rio.crs is None:
                 dataset = dataset.rio.write_crs("EPSG:4326")
 
@@ -61,7 +59,6 @@ class LandCoverProcessor(BaseTileProcessor):
                     dataset = dataset.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
 
             clipped_ds = dataset.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
-            logging.info("Clipping completed.")
 
             return clipped_ds
 
@@ -101,7 +98,6 @@ class LandCoverProcessor(BaseTileProcessor):
         merged_landcover = self._merge_tiles(tile_paths, aoi_polygon)
 
         if target_resolution_m is not None:
-            logging.info("Persisting merged data before regridding...")
             merged_landcover = merged_landcover.persist()
 
         clipped_landcover = self._clip_to_aoi(merged_landcover, aoi_polygon)
@@ -112,9 +108,6 @@ class LandCoverProcessor(BaseTileProcessor):
             and center_lon is not None
             and aoi_size_km is not None
         ):
-            logging.info(
-                f"Regridding landcover to {target_resolution_m}m resolution..."
-            )
             clipped_landcover = self._regrid_data(
                 clipped_landcover,
                 target_resolution_m,

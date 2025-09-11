@@ -65,13 +65,22 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
                 target_subset = albedo_data.sel(
                     longitude=target_lon_slice, latitude=target_lat_slice
                 )
-                target_dataset = target_subset.to_dataset(name=var_name)
-                target_filename = (
-                    f"hamster_{ctx.scene_name}_target_{ctx.target_resolution_m}m.zarr"
-                )
-                target_path = ctx.data_dir / target_filename
-                _save_hamster_dataset(target_dataset, target_path)
-                result_paths["target"] = target_path
+                
+                # Check if subset has any spatial data
+                if target_subset.sizes.get('latitude', 0) == 0 or target_subset.sizes.get('longitude', 0) == 0:
+                    logging.warning(
+                        f"HAMSTER data has no coverage for target area "
+                        f"(lat: {target_lat_slice}, lon: {target_lon_slice}). "
+                        "Falling back to standard baresoil."
+                    )
+                else:
+                    target_dataset = target_subset.to_dataset(name=var_name)
+                    target_filename = (
+                        f"hamster_{ctx.scene_name}_target_{ctx.target_resolution_m}m.zarr"
+                    )
+                    target_path = ctx.data_dir / target_filename
+                    _save_hamster_dataset(target_dataset, target_path)
+                    result_paths["target"] = target_path
 
         # Process buffer area if enabled
         if ctx.has_buffer and ctx._buffer_aoi_polygon is not None:
@@ -82,11 +91,20 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
             buffer_subset = albedo_data.sel(
                 longitude=buffer_lon_slice, latitude=buffer_lat_slice
             )
-            buffer_dataset = buffer_subset.to_dataset(name=var_name)
-            buffer_filename = f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer.buffer_resolution_m}m.zarr"
-            buffer_path = ctx.data_dir / buffer_filename
-            _save_hamster_dataset(buffer_dataset, buffer_path)
-            result_paths["buffer"] = buffer_path
+            
+            # Check if subset has any spatial data
+            if buffer_subset.sizes.get('latitude', 0) == 0 or buffer_subset.sizes.get('longitude', 0) == 0:
+                logging.warning(
+                    f"HAMSTER data has no coverage for buffer area "
+                    f"(lat: {buffer_lat_slice}, lon: {buffer_lon_slice}). "
+                    "Falling back to standard baresoil."
+                )
+            else:
+                buffer_dataset = buffer_subset.to_dataset(name=var_name)
+                buffer_filename = f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer.buffer_resolution_m}m.zarr"
+                buffer_path = ctx.data_dir / buffer_filename
+                _save_hamster_dataset(buffer_dataset, buffer_path)
+                result_paths["buffer"] = buffer_path
 
         # Process background area if enabled
         if (
@@ -99,11 +117,20 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
             bg_lat_slice = slice(bg_bounds[3], bg_bounds[1])
 
             bg_subset = albedo_data.sel(longitude=bg_lon_slice, latitude=bg_lat_slice)
-            bg_dataset = bg_subset.to_dataset(name=var_name)
-            bg_filename = f"hamster_{ctx.scene_name}_background_{ctx.config.buffer.background_resolution_m}m.zarr"
-            bg_path = ctx.data_dir / bg_filename
-            _save_hamster_dataset(bg_dataset, bg_path)
-            result_paths["background"] = bg_path
+            
+            # Check if subset has any spatial data
+            if bg_subset.sizes.get('latitude', 0) == 0 or bg_subset.sizes.get('longitude', 0) == 0:
+                logging.warning(
+                    f"HAMSTER data has no coverage for background area "
+                    f"(lat: {bg_lat_slice}, lon: {bg_lon_slice}). "
+                    "Falling back to standard baresoil."
+                )
+            else:
+                bg_dataset = bg_subset.to_dataset(name=var_name)
+                bg_filename = f"hamster_{ctx.scene_name}_background_{ctx.config.buffer.background_resolution_m}m.zarr"
+                bg_path = ctx.data_dir / bg_filename
+                _save_hamster_dataset(bg_dataset, bg_path)
+                result_paths["background"] = bg_path
 
         # Store result paths in context for scene description
         if result_paths:

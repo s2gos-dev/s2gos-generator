@@ -4,8 +4,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+# Import coordinate transformation system
+from s2gos_utils.coordinates import CoordinateSystem
+
 from ..core.context import SceneResourceContext
-from ..utils import create_aoi_polygon
 
 
 def generate_aoi(ctx: SceneResourceContext) -> Optional[Path]:
@@ -21,11 +23,8 @@ def generate_aoi(ctx: SceneResourceContext) -> Optional[Path]:
         None (AOI polygon is stored in context for other resources to access)
     """
 
-    aoi_polygon = create_aoi_polygon(
-        center_lat=ctx.center_lat,
-        center_lon=ctx.center_lon,
-        side_length_km=ctx.aoi_size_km,
-    )
+    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
+    aoi_polygon = coords.create_scene_polygon(ctx.aoi_size_km)
 
     # Store the AOI polygon in context for other resources
     ctx._target_aoi_polygon = aoi_polygon
@@ -48,11 +47,9 @@ def generate_buffer_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     buffer_size_km = ctx.config.buffer.buffer_size_km
-    buffer_aoi_polygon = create_aoi_polygon(
-        center_lat=ctx.center_lat,
-        center_lon=ctx.center_lon,
-        side_length_km=buffer_size_km,
-    )
+    
+    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
+    buffer_aoi_polygon = coords.create_scene_polygon(buffer_size_km)
 
     # Store the buffer AOI polygon in context
     ctx._buffer_aoi_polygon = buffer_aoi_polygon
@@ -71,11 +68,9 @@ def generate_background_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     background_size_km = ctx.config.buffer.background_size_km
-    background_aoi_polygon = create_aoi_polygon(
-        center_lat=ctx.center_lat,
-        center_lon=ctx.center_lon,
-        side_length_km=background_size_km,
-    )
+    
+    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
+    background_aoi_polygon = coords.create_scene_polygon(background_size_km)
 
     # Store the background AOI polygon in context
     ctx._background_aoi_polygon = background_aoi_polygon

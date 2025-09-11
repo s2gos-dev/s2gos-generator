@@ -356,17 +356,18 @@ def _convert_single_material(mat_id: str, mat_data: Dict[str, Any]) -> Dict[str,
         eta = properties.get("eta")
         k = properties.get("k")
 
+        result = {"type": "conductor"}
+
         if material_preset:
             # Use material preset (e.g., "Cu", "Au", "Al")
-            ior_spec = {"preset": material_preset}
+            result["material"] = material_preset
         elif eta is not None and k is not None:
             # Use explicit eta/k values
-            ior_spec = {"eta": float(eta), "k": float(k)}
+            result["eta"] = {"type": "uniform", "value": float(eta)}
+            result["k"] = {"type": "uniform", "value": float(k)}
         else:
             # Default to copper
-            ior_spec = {"preset": "Cu"}
-
-        result = {"type": "conductor", "ior": ior_spec}
+            result["material"] = "Cu"
 
         # Add specular reflectance if present
         spec_refl = properties.get("specular_reflectance")
@@ -388,18 +389,21 @@ def _convert_single_material(mat_id: str, mat_data: Dict[str, Any]) -> Dict[str,
         k = properties.get("k")
         distribution = properties.get("distribution", "ggx")
 
-        if material_preset:
-            ior_spec = {"preset": material_preset}
-        elif eta is not None and k is not None:
-            ior_spec = {"eta": float(eta), "k": float(k)}
-        else:
-            ior_spec = {"preset": "Cu"}
-
         result = {
             "type": "rough_conductor",
-            "ior": ior_spec,
             "distribution": str(distribution),
         }
+
+        if material_preset:
+            # Use material preset (e.g., "Cu", "Au", "Al")
+            result["material"] = material_preset
+        elif eta is not None and k is not None:
+            # Use explicit eta/k values
+            result["eta"] = {"type": "uniform", "value": float(eta)}
+            result["k"] = {"type": "uniform", "value": float(k)}
+        else:
+            # Default to copper
+            result["material"] = "Cu"
 
         # Handle anisotropic roughness (alpha_u, alpha_v) or isotropic (alpha, roughness)
         alpha_u = properties.get("alpha_u")

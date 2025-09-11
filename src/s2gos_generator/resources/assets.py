@@ -18,12 +18,9 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
         Path to the objects directory containing processed assets
     """
 
+    # Import coordinate transformation system
+    from s2gos_utils.coordinates import CoordinateSystem
     from s2gos_utils.io.paths import mkdir
-
-    from ..utils.geometry import (
-        latlon_to_scene_coordinates,
-        query_elevation_at_coordinate,
-    )
 
     processed_objects = []
 
@@ -36,25 +33,20 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
     if target_dem_path is None:
         raise RuntimeError("Target DEM data not available for elevation querying")
 
+    # Create coordinate system once for all assets (performance optimization)
+    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
+    logging.info("Using cached CoordinateSystem for asset placement")
+
     for i, asset in enumerate(ctx.user_assets):
         try:
             # Convert lat/lon to scene coordinates
             lon, lat = asset.coordinate
-            scene_x, scene_y = latlon_to_scene_coordinates(
-                target_lat=lat,
-                target_lon=lon,
-                scene_center_lat=ctx.center_lat,
-                scene_center_lon=ctx.center_lon,
-            )
+            
+            # Use cached coordinate system
+            scene_x, scene_y = coords.latlon_to_scene(lat, lon)
 
-            # Query elevation at coordinate
-            elevation = query_elevation_at_coordinate(
-                dem_zarr_path=target_dem_path,
-                latitude=lat,
-                longitude=lon,
-                scene_center_lat=ctx.center_lat,
-                scene_center_lon=ctx.center_lon,
-            )
+            # Query elevation at coordinate using CoordinateSystem method
+            elevation = coords.query_height_from_dem(lat, lon, target_dem_path)
 
             final_z = elevation + asset.elevation_offset
 
@@ -74,6 +66,9 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
 
             if asset.material:
                 object_data["material"] = asset.material
+            
+            if asset.face_normals is not None:
+                object_data["face_normals"] = asset.face_normals
 
             processed_objects.append(object_data)
 

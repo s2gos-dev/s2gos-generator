@@ -411,6 +411,10 @@ class UserAssets(BaseModel):
     rotation_x: float = Field(0.0, description="Rotation around X-axis in degrees")
     rotation_y: float = Field(0.0, description="Rotation around Y-axis in degrees")
     rotation_z: float = Field(0.0, description="Rotation around Z-axis in degrees")
+    face_normals: Optional[bool] = Field(
+        None, 
+        description="Mitsuba PLY face normals setting: True=smooth normals, False=per-face normals, None=use PLY file defaults"
+    )
 
     @field_validator("coordinate")
     @classmethod

@@ -117,6 +117,11 @@
       "pigmentation": 5.0,
       "wind_speed": 2.0,
       "wind_direction": 90.0
+    },
+    "rough_aluminum": {
+      "type": "rough_conductor",
+      "material": "Al",
+      "roughness": 1.0
     }
   },
   "landcover_mapping": {

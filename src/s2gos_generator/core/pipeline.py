@@ -74,7 +74,8 @@ class SceneGenerationPipeline:
         )
 
         # Register resources with their dependencies
-        # Core resources
+        
+        # Core resources - always included
         self.registry.register("aoi", [], generate_aoi)
         self.registry.register("target_dem", ["aoi"], process_target_dem)
         self.registry.register("target_landcover", ["aoi"], process_target_landcover)
@@ -83,7 +84,7 @@ class SceneGenerationPipeline:
             "target_texture", ["target_landcover"], generate_target_texture
         )
 
-        # Buffer resources
+        # Buffer resources - included if config.buffer exists
         self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
         self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
         self.registry.register(
@@ -94,7 +95,7 @@ class SceneGenerationPipeline:
             "buffer_texture", ["buffer_landcover"], generate_buffer_texture
         )
 
-        # Background resources
+        # Background resources - included if config.buffer.background_size_km > 0
         self.registry.register(
             "background_aoi", ["buffer_aoi"], generate_background_aoi
         )
@@ -105,12 +106,12 @@ class SceneGenerationPipeline:
             "background_texture", ["background_landcover"], generate_background_texture
         )
 
-        # Optional resources
-        self.registry.register("user_assets", ["target_dem"], process_user_assets)
+        # Optional resources - filtered based on config
+        self.registry.register("user_assets", ["target_dem"], process_user_assets)  # Requires config.user_assets
         self.registry.register(
             "hamster_data",
             ["aoi", "buffer_aoi", "background_aoi"],
-            process_hamster_data,
+            process_hamster_data,  # Requires config.hamster.enabled
         )
 
         # Scene description (dependencies will be updated by update_scene_dependencies)
@@ -184,6 +185,18 @@ class SceneGenerationPipeline:
                 background_resources.append(resource_id)
             else:
                 optional_resources.append(resource_id)
+
+        total_resources = len(self.registry.resources)
+        logging.info(f"Registered {total_resources} resources:")
+        
+        if core_resources:
+            logging.info(f"  Core ({len(core_resources)}): {', '.join(core_resources)}")
+        if buffer_resources:
+            logging.info(f"  Buffer ({len(buffer_resources)}): {', '.join(buffer_resources)}")
+        if background_resources:
+            logging.info(f"  Background ({len(background_resources)}): {', '.join(background_resources)}")
+        if optional_resources:
+            logging.info(f"  Optional ({len(optional_resources)}): {', '.join(optional_resources)}")
 
     def run_full_pipeline(self) -> SceneDescription:
         """Execute the complete scene generation pipeline.
@@ -290,7 +303,7 @@ class SceneGenerationPipeline:
                     dot.node(
                         resource.id, resource.id, fillcolor=color, shape="doubleoctagon"
                     )
-                elif "mesh" in resource.id:
+                elif "mesh" in resource.id or resource.id == "user_assets":
                     dot.node(resource.id, resource.id, fillcolor=color, shape="diamond")
                 else:
                     dot.node(resource.id, resource.id, fillcolor=color, shape="box")
@@ -298,20 +311,14 @@ class SceneGenerationPipeline:
             for resource in resources:
                 if resource.dependencies:
                     for dependency in resource.dependencies:
-                        if "buffer" in resource.id and "buffer" in dependency:
-                            dot.edge(
-                                dependency, resource.id, style="dashed", color="blue"
-                            )
-                        elif "background" in resource.id:
-                            dot.edge(
-                                dependency, resource.id, style="dotted", color="purple"
-                            )
-                        else:
-                            dot.edge(dependency, resource.id, color="black")
+                        dot.edge(dependency, resource.id, color="black")
 
-            dot.attr(
-                label=f"Scene Generation Pipeline\\n{self.scene_name}\\nGenerated: {self.config.created_at.strftime('%Y-%m-%d %H:%M')}"
+            legend_text = (
+                f"Scene Generation Pipeline: {self.scene_name}\\n"
+                f"Generated: {self.config.created_at.strftime('%Y-%m-%d %H:%M')}\\n"
+                f"Shapes: ○ AOI, ◊ Mesh, □ Array, ⬢ Final"
             )
+            dot.attr(label=legend_text)
             dot.attr(labelloc="t")
 
             output_file = dot.render(str(output_path), format=format, cleanup=True)

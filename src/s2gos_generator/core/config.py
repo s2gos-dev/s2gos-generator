@@ -338,7 +338,11 @@ def _default_atmosphere_config() -> "AtmosphereConfig":
 
 
 class BufferConfig(BaseModel):
-    """Combined buffer and background configuration."""
+    """Combined buffer and background configuration.
+    
+    Note: Background features are included here but can be disabled independently
+    by setting background_size_km to 0 or omitting the buffer config entirely.
+    """
 
     buffer_size_km: float = Field(..., gt=0.0, description="Buffer size in kilometers")
     buffer_resolution_m: float = Field(
@@ -348,7 +352,7 @@ class BufferConfig(BaseModel):
         0.0, description="Background elevation in meters"
     )
     background_size_km: float = Field(
-        100.0, gt=0.0, description="Background area size in kilometers"
+        100.0, ge=0.0, description="Background area size in kilometers (0 to disable)"
     )
     background_resolution_m: float = Field(
         200.0, gt=0.0, description="Background resolution in meters"

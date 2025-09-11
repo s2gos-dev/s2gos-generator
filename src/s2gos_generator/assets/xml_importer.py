@@ -1,11 +1,3 @@
-"""
-Mitsuba XML importer for converting multi-material assets to S2GOS format.
-
-This module provides utilities for importing Mitsuba scene XML files
-and converting them to S2GOS-compatible asset data with proper material
-library management and string-based references.
-"""
-
 import fnmatch
 import logging
 import xml.etree.ElementTree as ET
@@ -41,457 +33,435 @@ def import_xml_assets(
         Tuple of (assets_list, material_library):
         - assets_list: List of asset dicts with string material references
         - material_library: Dict of {material_id: material_definition}
-
-    Raises:
-        ValueError: If material validation fails or XML parsing errors
-        FileNotFoundError: If XML or PLY files are not accessible
     """
-    xml_data = _parse_mitsuba_xml(xml_path)
+    # Validate input parameters
+    if not isinstance(base_coordinate, (list, tuple)) or len(base_coordinate) != 2:
+        raise ValueError(f"base_coordinate must be a list/tuple of exactly 2 elements [longitude, latitude], got: {base_coordinate}")
+    
+    try:
+        float(base_coordinate[0])
+        float(base_coordinate[1])
+    except (ValueError, TypeError):
+        raise ValueError(f"base_coordinate values must be numeric, got: {base_coordinate}")
 
-    material_library = {}
-    if xml_data["materials"]:
-        material_library = _convert_materials_to_library(xml_data["materials"])
-
+    xml_data = _parse_xml(xml_path)
+    material_library = _convert_materials(xml_data["materials"])
+    
     assets = []
-    xml_dir = Path(xml_path).parent.resolve()
-
+    
     for shape in xml_data["shapes"]:
         ply_filename = Path(shape["file"]).stem
-
+        
+        # Determine material (mappings override XML materials)
         material_ref = None
         if material_mappings:
             for pattern, mapped_material in material_mappings.items():
                 if _match_filename(ply_filename, pattern, pattern_type):
                     material_ref = mapped_material
                     break
-
+        
         if material_ref is None:
             original_material_id = shape["material"]
             if original_material_id in material_library:
                 material_ref = original_material_id
             else:
-                logging.warning(
-                    f"Material '{original_material_id}' referenced by '{ply_filename}' not found in XML. Using 'concrete' fallback."
-                )
-                material_ref = "concrete"  # Fallback to library reference
-
+                logging.warning(f"Material '{original_material_id}' not found for '{ply_filename}'. Using 'concrete' fallback.")
+                material_ref = "concrete"
+        
+        # Apply transforms
         rotation_x = 90.0 if fix_blender_coords else 0.0
-        rotation_y = 0.0
-        rotation_z = 0.0
-
+        
         asset_data = {
             "object_id": f"{object_id_prefix}_{ply_filename}",
             "ply_path": shape["file"],
             "coordinate": base_coordinate.copy(),
-            "material": material_ref,  # STRING REFERENCE ONLY
+            "material": material_ref,
             "elevation_offset": elevation_offset,
             "scale": scale,
             "rotation_x": rotation_x,
-            "rotation_y": rotation_y,
-            "rotation_z": rotation_z,
+            "rotation_y": 0.0,
+            "rotation_z": 0.0,
         }
-
+        
         assets.append(asset_data)
-
+    
     if validate_materials:
-        _validate_assets_and_materials(assets, material_library)
-
+        _validate_assets(assets, material_library)
+    
     return assets, material_library
 
 
-def _parse_mitsuba_xml(xml_path: str) -> Dict[str, Any]:
-    """Extract materials and shapes data from Mitsuba XML file with proper property parsing.
+def merge_material_libraries(*libraries: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Merge multiple material libraries, warning about conflicts."""
+    merged = {}
+    for i, library in enumerate(libraries):
+        for mat_id, mat_def in library.items():
+            if mat_id in merged:
+                logging.warning(f"Material '{mat_id}' conflict. Using definition from library {i + 1}.")
+            merged[mat_id] = mat_def
+    return merged
 
-    Args:
-        xml_path: Path to Mitsuba XML file
 
-    Returns:
-        Dictionary with 'materials' and 'shapes' keys
-
-    Raises:
-        FileNotFoundError: If XML file doesn't exist
-        ET.ParseError: If XML file is malformed
-        ValueError: If essential XML structure is missing
-    """
+def _parse_xml(xml_path: str) -> Dict[str, Any]:
+    """Parse Mitsuba XML file to extract materials and shapes."""
     xml_file = Path(xml_path)
     if not xml_file.exists():
-        raise FileNotFoundError(f"Mitsuba XML file not found: {xml_path}")
-
-    try:
-        tree = ET.parse(xml_path)
-    except ET.ParseError as e:
-        raise ET.ParseError(f"Failed to parse Mitsuba XML file '{xml_path}': {e}")
-
+        raise FileNotFoundError(f"XML file not found: {xml_path}")
+    
+    tree = ET.parse(xml_path)
     xml_dir = xml_file.parent.resolve()
-
+    
+    # Extract materials
     materials = {}
-    bsdf_elements = tree.findall(".//bsdf")
-
-    if not bsdf_elements:
-        logging.warning(f"No BSDF materials found in XML file '{xml_path}'")
-
-    for bsdf in bsdf_elements:
+    for bsdf in tree.findall(".//bsdf"):
         material_id = bsdf.get("id")
         if material_id:
-            try:
-                materials[material_id] = _parse_bsdf_properties(bsdf)
-            except Exception as e:
-                logging.warning(
-                    f"Failed to parse material '{material_id}' in '{xml_path}': {e}. Skipping."
-                )
-                continue
-        else:
-            logging.warning(
-                f"BSDF element without 'id' attribute found in '{xml_path}'. Skipping."
-            )
-
+            materials[material_id] = _parse_bsdf_element(bsdf)
+    
+    # Extract shapes
     shapes = []
-    shape_elements = tree.findall('.//shape[@type="ply"]')
-
-    if not shape_elements:
-        logging.warning(f"No PLY shapes found in XML file '{xml_path}'")
-
-    for i, shape in enumerate(shape_elements):
+    for shape in tree.findall('.//shape[@type="ply"]'):
         filename_elem = shape.find('./string[@name="filename"]')
         if filename_elem is not None:
             filename = filename_elem.get("value")
-            if not filename:
-                logging.warning(
-                    f"Empty filename in shape {i} of '{xml_path}'. Skipping."
-                )
-                continue
-
             material_ref = shape.find('./ref[@name="bsdf"]')
-            material_id = (
-                material_ref.get("id", "default-bsdf")
-                if material_ref is not None
-                else "default-bsdf"
-            )
-
-            shapes.append({"file": str(xml_dir / filename), "material": material_id})
-        else:
-            logging.warning(f"Shape {i} in '{xml_path}' has no filename. Skipping.")
-
-    if not materials and not shapes:
-        raise ValueError(
-            f"No usable materials or shapes found in Mitsuba XML file '{xml_path}'"
-        )
-
+            material_id = material_ref.get("id", "default-bsdf") if material_ref is not None else "default-bsdf"
+            shapes.append({
+                "file": str(xml_dir / filename),
+                "material": material_id
+            })
+    
     return {"materials": materials, "shapes": shapes}
 
 
-def _parse_bsdf_properties(bsdf_element) -> Dict[str, Any]:
-    """Parse BSDF element properties from Mitsuba XML.
-
-    Args:
-        bsdf_element: XML element for BSDF
-
-    Returns:
-        Dictionary with parsed material properties
-
-    Raises:
-        ValueError: If BSDF element structure is invalid
-    """
-    mat_data = {"type": bsdf_element.get("type", "diffuse"), "properties": {}}
-
-    # Parse nested BSDF for twosided materials
+def _parse_bsdf_element(bsdf_element) -> Dict[str, Any]:
+    """Parse BSDF element to extract type and properties."""
+    mat_data = {
+        "type": bsdf_element.get("type", "diffuse"),
+        "properties": {}
+    }
+    
+    # Handle nested BSDF for twosided materials
     if mat_data["type"] == "twosided":
         nested_bsdf = bsdf_element.find("./bsdf")
         if nested_bsdf is not None:
-            nested_props = _parse_bsdf_properties(nested_bsdf)
-            mat_data["nested_type"] = nested_props["type"]
-            mat_data["properties"].update(nested_props["properties"])
-        else:
-            mat_data["nested_type"] = "diffuse"
-
-    # Parse properties based on element type and name
+            nested_data = _parse_bsdf_element(nested_bsdf)
+            mat_data["nested_type"] = nested_data["type"]
+            
+            # Check for property collisions and warn
+            overlapping_props = set(mat_data["properties"].keys()) & set(nested_data["properties"].keys())
+            if overlapping_props:
+                logging.warning(f"Twosided material property collision: {overlapping_props} - nested properties will override parent")
+            
+            mat_data["properties"].update(nested_data["properties"])
+    
+    # Parse properties
     for child in bsdf_element:
         if child.tag in ["rgb", "spectrum", "float", "string", "integer", "boolean"]:
             name = child.get("name")
             if name:
-                try:
-                    if child.tag == "rgb":
-                        # Parse RGB color values
-                        value_str = child.get("value", "0.5 0.5 0.5")
-                        try:
-                            rgb_values = [float(x) for x in value_str.split()]
-                            if len(rgb_values) != 3:
-                                logging.warning(
-                                    f"RGB value '{value_str}' doesn't have 3 components. Using default."
-                                )
-                                rgb_values = [0.5, 0.5, 0.5]
-                            mat_data["properties"][name] = rgb_values
-                        except (ValueError, IndexError):
-                            logging.warning(
-                                f"Invalid RGB value '{value_str}' for property '{name}'. Using default."
-                            )
-                            mat_data["properties"][name] = [0.5, 0.5, 0.5]
-                    elif child.tag == "float":
-                        try:
-                            mat_data["properties"][name] = float(
-                                child.get("value", "0.0")
-                            )
-                        except ValueError:
-                            logging.warning(
-                                f"Invalid float value '{child.get('value')}' for property '{name}'. Using 0.0."
-                            )
-                            mat_data["properties"][name] = 0.0
-                    elif child.tag == "string":
-                        mat_data["properties"][name] = child.get("value", "")
-                    elif child.tag == "integer":
-                        try:
-                            mat_data["properties"][name] = int(child.get("value", "0"))
-                        except ValueError:
-                            logging.warning(
-                                f"Invalid integer value '{child.get('value')}' for property '{name}'. Using 0."
-                            )
-                            mat_data["properties"][name] = 0
-                    elif child.tag == "boolean":
-                        mat_data["properties"][name] = (
-                            child.get("value", "false").lower() == "true"
-                        )
-                    elif child.tag == "spectrum":
-                        # For spectrum, we might have a filename reference
-                        filename = child.get("filename")
-                        if filename:
-                            mat_data["properties"][name] = {"file": filename}
-                        else:
-                            # Single value spectrum
-                            try:
-                                mat_data["properties"][name] = float(
-                                    child.get("value", "0.5")
-                                )
-                            except ValueError:
-                                logging.warning(
-                                    f"Invalid spectrum value '{child.get('value')}' for property '{name}'. Using 0.5."
-                                )
-                                mat_data["properties"][name] = 0.5
-                except Exception as e:
-                    logging.warning(
-                        f"Error parsing property '{name}' in BSDF: {e}. Skipping property."
-                    )
-                    continue
-
+                mat_data["properties"][name] = _parse_property(child)
+    
     return mat_data
 
 
-def _convert_materials_to_library(
-    mitsuba_materials: Dict[str, Dict],
-) -> Dict[str, Dict]:
-    """Convert Mitsuba materials to S2GOS material library format.
+def _parse_property(element) -> Any:
+    """Parse individual property element."""
+    tag = element.tag
+    value = element.get("value", "")
+    
+    if tag == "rgb":
+        try:
+            rgb_values = [float(x) for x in value.split()]
+            if len(rgb_values) == 3:
+                return rgb_values
+            elif len(rgb_values) == 1:
+                # Single value - use for all channels
+                return [rgb_values[0]] * 3
+            else:
+                # Wrong number of values
+                logging.warning(f"RGB value '{value}' has {len(rgb_values)} components, expected 3. Using default.")
+                return [0.5, 0.5, 0.5]
+        except (ValueError, IndexError):
+            return [0.5, 0.5, 0.5]
+    elif tag == "float":
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    elif tag == "integer":
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    elif tag == "boolean":
+        return value.lower() == "true"
+    elif tag == "string":
+        return value
+    elif tag == "spectrum":
+        filename = element.get("filename")
+        if filename:
+            return {"file": filename}
+        try:
+            return float(value)
+        except ValueError:
+            return 0.5
+    
+    return value
 
-    Args:
-        mitsuba_materials: Dictionary of Mitsuba material definitions with parsed properties
 
-    Returns:
-        Dictionary of S2GOS-compatible material definitions
-    """
+def _convert_materials(mitsuba_materials: Dict[str, Dict]) -> Dict[str, Dict]:
+    """Convert materials to S2GOS format using converter registry."""
     s2gos_materials = {}
-
+    
     for mat_id, mat_data in mitsuba_materials.items():
         try:
-            s2gos_material = _convert_single_material(mat_id, mat_data)
-            s2gos_materials[mat_id] = s2gos_material
-        except (KeyError, ValueError, TypeError) as e:
-            # These are material definition errors - provide clear error message
-            raise ValueError(
-                f"Material '{mat_id}' conversion failed: {e}. "
-                f"Raw material data: {mat_data}"
-            ) from e
+            mat_type = mat_data.get("type", "diffuse")
+            nested_type = mat_data.get("nested_type")
+            
+            # Handle twosided by using nested type
+            if mat_type == "twosided" and nested_type:
+                mat_type = nested_type
+            
+            # Get converter function
+            converter = MATERIAL_CONVERTERS.get(mat_type, convert_diffuse)
+            s2gos_materials[mat_id] = converter(mat_data["properties"])
+            
         except Exception as e:
-            # Unexpected errors should not be hidden
-            raise RuntimeError(
-                f"Unexpected error converting material '{mat_id}': {e}. "
-                f"Raw material data: {mat_data}"
-            ) from e
-
+            logging.warning(f"Failed to convert material '{mat_id}': {e}. Using diffuse fallback.")
+            s2gos_materials[mat_id] = convert_diffuse({})
+    
     return s2gos_materials
 
 
-def _convert_single_material(mat_id: str, mat_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert a single Mitsuba material to S2GOS format.
+# Material Converter Functions
 
-    Args:
-        mat_id: Material identifier
-        mat_data: Parsed Mitsuba material data
-
-    Returns:
-        S2GOS material dictionary
-
-    Raises:
-        ValueError: If material type is unsupported or properties are invalid
-    """
-    mat_type = mat_data.get("type", "diffuse")
-    nested_type = mat_data.get("nested_type")
-    properties = mat_data.get("properties", {})
-
-    # Handle twosided materials by using the nested type
-    if mat_type == "twosided" and nested_type:
-        mat_type = nested_type
-
-    if mat_type == "diffuse":
-        # Extract reflectance property
-        reflectance = properties.get("reflectance")
-        if isinstance(reflectance, list) and len(reflectance) == 3:
-            # RGB reflectance
-            reflectance_spec = {"type": "uniform", "value": reflectance}
-        elif isinstance(reflectance, (int, float)):
-            # Scalar reflectance
-            reflectance_spec = {"type": "uniform", "value": float(reflectance)}
-        elif isinstance(reflectance, dict) and "file" in reflectance:
-            # File-based spectrum (convert to S2GOS format)
-            reflectance_spec = {
-                "path": f"spectra/{reflectance['file']}",
-                "variable": "reflectance",
-            }
-        else:
-            # Default neutral gray
-            reflectance_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
-
-        return {"type": "diffuse", "reflectance": reflectance_spec}
-
-    elif mat_type == "conductor":
-        # Extract material preset or IOR values
-        material_preset = properties.get("material")
-        eta = properties.get("eta")
-        k = properties.get("k")
-
-        result = {"type": "conductor"}
-
-        if material_preset:
-            # Use material preset (e.g., "Cu", "Au", "Al")
-            result["material"] = material_preset
-        elif eta is not None and k is not None:
-            # Use explicit eta/k values
-            result["eta"] = {"type": "uniform", "value": float(eta)}
-            result["k"] = {"type": "uniform", "value": float(k)}
-        else:
-            # Default to copper
-            result["material"] = "Cu"
-
-        # Add specular reflectance if present
-        spec_refl = properties.get("specular_reflectance")
-        if spec_refl is not None:
-            if isinstance(spec_refl, list):
-                result["specular_reflectance"] = {"type": "uniform", "value": spec_refl}
-            elif isinstance(spec_refl, (int, float)):
-                result["specular_reflectance"] = {
-                    "type": "uniform",
-                    "value": float(spec_refl),
-                }
-
-        return result
-
-    elif mat_type == "roughconductor":
-        # Similar to conductor but with roughness
-        material_preset = properties.get("material")
-        eta = properties.get("eta")
-        k = properties.get("k")
-        distribution = properties.get("distribution", "ggx")
-
-        result = {
-            "type": "rough_conductor",
-            "distribution": str(distribution),
-        }
-
-        if material_preset:
-            # Use material preset (e.g., "Cu", "Au", "Al")
-            result["material"] = material_preset
-        elif eta is not None and k is not None:
-            # Use explicit eta/k values
-            result["eta"] = {"type": "uniform", "value": float(eta)}
-            result["k"] = {"type": "uniform", "value": float(k)}
-        else:
-            # Default to copper
-            result["material"] = "Cu"
-
-        # Handle anisotropic roughness (alpha_u, alpha_v) or isotropic (alpha, roughness)
-        alpha_u = properties.get("alpha_u")
-        alpha_v = properties.get("alpha_v")
-
-        if alpha_u is not None or alpha_v is not None:
-            # Use anisotropic roughness
-            if alpha_u is not None:
-                result["alpha_u"] = float(alpha_u)
-            if alpha_v is not None:
-                result["alpha_v"] = float(alpha_v)
-        else:
-            # Fall back to isotropic roughness
-            alpha = properties.get("alpha", properties.get("roughness", 0.1))
-            result["roughness"] = float(alpha)
-
-        # Add specular reflectance if present
-        spec_refl = properties.get("specular_reflectance")
-        if spec_refl is not None:
-            if isinstance(spec_refl, list):
-                result["specular_reflectance"] = {"type": "uniform", "value": spec_refl}
-            elif isinstance(spec_refl, (int, float)):
-                result["specular_reflectance"] = {
-                    "type": "uniform",
-                    "value": float(spec_refl),
-                }
-
-        return result
-
-    elif mat_type == "dielectric":
-        int_ior = properties.get("int_ior", 1.5)
-        ext_ior = properties.get("ext_ior", 1.0)
-
-        result = {
-            "type": "dielectric",
-            "int_ior": float(int_ior),
-            "ext_ior": float(ext_ior),
-        }
-
-        # Add optional properties
-        for prop_name in ["specular_reflectance", "specular_transmittance"]:
-            prop_val = properties.get(prop_name)
-            if prop_val is not None:
-                if isinstance(prop_val, list):
-                    result[prop_name] = {"type": "uniform", "value": prop_val}
-                elif isinstance(prop_val, (int, float)):
-                    result[prop_name] = {"type": "uniform", "value": float(prop_val)}
-
-        return result
-
-    elif mat_type == "plastic":
-        # Extract diffuse reflectance and coating properties
-        diffuse_refl = properties.get("diffuse_reflectance", [0.5, 0.5, 0.5])
-        int_ior = properties.get("int_ior", 1.49)
-        ext_ior = properties.get("ext_ior", 1.0)
-        alpha = properties.get("alpha", 0.01)
-        nonlinear = properties.get("nonlinear", False)
-
-        if isinstance(diffuse_refl, (int, float)):
-            diffuse_spec = {"type": "uniform", "value": float(diffuse_refl)}
-        elif isinstance(diffuse_refl, list):
-            diffuse_spec = {"type": "uniform", "value": diffuse_refl}
-        else:
-            diffuse_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
-
-        return {
-            "type": "plastic",
-            "diffuse_reflectance": diffuse_spec,
-            "int_ior": float(int_ior),
-            "ext_ior": float(ext_ior),
-            "roughness": float(alpha),
-            "nonlinear": bool(nonlinear),
-        }
-
+def convert_diffuse(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert diffuse material."""
+    reflectance = props.get("reflectance", [0.5, 0.5, 0.5])
+    if isinstance(reflectance, dict) and "file" in reflectance:
+        reflectance_spec = {"path": f"spectra/{reflectance['file']}", "variable": "reflectance"}
+    elif isinstance(reflectance, (list, tuple)):
+        reflectance_spec = {"type": "uniform", "value": list(reflectance)}
+    elif isinstance(reflectance, (int, float)):
+        reflectance_spec = {"type": "uniform", "value": float(reflectance)}
     else:
-        # Unsupported material type - convert to diffuse with warning
-        logging.warning(
-            f"Unsupported Mitsuba material type '{mat_type}' for material '{mat_id}'. Converting to diffuse."
-        )
-        return {
-            "type": "diffuse",
-            "reflectance": {"type": "uniform", "value": [0.5, 0.5, 0.5]},
-        }
+        reflectance_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
+    
+    return {"type": "diffuse", "reflectance": reflectance_spec}
 
 
-def _match_filename(
-    filename: str, pattern: str, pattern_type: str = "wildcard"
-) -> bool:
+def convert_conductor(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert conductor material."""
+    result = {"type": "conductor"}
+    
+    material_preset = props.get("material")
+    if material_preset:
+        result["material"] = material_preset
+    else:
+        result["material"] = "Cu"  # Default copper
+    
+    # Add specular reflectance if present
+    spec_refl = props.get("specular_reflectance")
+    if spec_refl is not None:
+        if isinstance(spec_refl, (list, tuple)):
+            result["specular_reflectance"] = {"type": "uniform", "value": list(spec_refl)}
+        elif isinstance(spec_refl, (int, float)):
+            result["specular_reflectance"] = {"type": "uniform", "value": float(spec_refl)}
+    
+    return result
+
+
+def convert_roughconductor(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert rough conductor material."""
+    result = convert_conductor(props)
+    result["type"] = "rough_conductor"
+    result["distribution"] = props.get("distribution", "ggx")
+    
+    # Handle roughness
+    alpha_u = props.get("alpha_u")
+    alpha_v = props.get("alpha_v")
+    if alpha_u is not None or alpha_v is not None:
+        if alpha_u is not None:
+            result["alpha_u"] = float(alpha_u)
+        if alpha_v is not None:
+            result["alpha_v"] = float(alpha_v)
+    else:
+        alpha = props.get("alpha", props.get("roughness", 0.1))
+        result["roughness"] = float(alpha)
+    
+    return result
+
+
+def convert_dielectric(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert dielectric material."""
+    result = {
+        "type": "dielectric",
+        "int_ior": float(props.get("int_ior", 1.5)),
+        "ext_ior": float(props.get("ext_ior", 1.0)),
+    }
+    
+    # Add optional properties
+    for prop_name in ["specular_reflectance", "specular_transmittance"]:
+        prop_val = props.get(prop_name)
+        if prop_val is not None:
+            if isinstance(prop_val, (list, tuple)):
+                result[prop_name] = {"type": "uniform", "value": list(prop_val)}
+            elif isinstance(prop_val, (int, float)):
+                result[prop_name] = {"type": "uniform", "value": float(prop_val)}
+    
+    return result
+
+
+def convert_plastic(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert plastic material."""
+    diffuse_refl = props.get("diffuse_reflectance", [0.5, 0.5, 0.5])
+    
+    if isinstance(diffuse_refl, (int, float)):
+        diffuse_spec = {"type": "uniform", "value": float(diffuse_refl)}
+    elif isinstance(diffuse_refl, (list, tuple)):
+        diffuse_spec = {"type": "uniform", "value": list(diffuse_refl)}
+    else:
+        diffuse_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
+    
+    return {
+        "type": "plastic",
+        "diffuse_reflectance": diffuse_spec,
+        "int_ior": float(props.get("int_ior", 1.49)),
+        "ext_ior": float(props.get("ext_ior", 1.0)),
+        "roughness": float(props.get("alpha", 0.01)),
+        "nonlinear": bool(props.get("nonlinear", False)),
+    }
+
+
+# Eradiate BSDF Converters
+
+def convert_bilambertian(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert bi-lambertian (two-sided diffuse) material."""
+    reflectance = props.get("reflectance", [0.5, 0.5, 0.5])
+    transmittance = props.get("transmittance", [0.0, 0.0, 0.0])
+    
+    return {
+        "type": "bilambertian",
+        "reflectance": {"type": "uniform", "value": _ensure_list(reflectance)},
+        "transmittance": {"type": "uniform", "value": _ensure_list(transmittance)},
+    }
+
+
+def convert_rpv(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Rahman Pinty Verstraete reflection model."""
+    return {
+        "type": "rpv",
+        "rho_0": float(props.get("rho_0", 0.1)),
+        "k": float(props.get("k", 0.5)),
+        "g": float(props.get("g", -0.1)),
+        "rho_c": float(props.get("rho_c", 0.0)),
+    }
+
+
+def convert_rtls(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Ross-Thick Li-Sparse reflection model."""
+    return {
+        "type": "rtls",
+        "f_iso": float(props.get("f_iso", 1.0)),
+        "f_geo": float(props.get("f_geo", 0.0)),
+        "f_vol": float(props.get("f_vol", 0.0)),
+    }
+
+
+def convert_hapke(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Hapke surface model."""
+    return {
+        "type": "hapke",
+        "w": float(props.get("w", 0.5)),
+        "b": float(props.get("b", 0.0)),
+        "c": float(props.get("c", 0.0)),
+        "theta": float(props.get("theta", 0.0)),
+        "B_0": float(props.get("B_0", 1.0)),
+        "h": float(props.get("h", 0.06)),
+    }
+
+
+def convert_oceanic_grasp(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert GRASP oceanic model."""
+    return {
+        "type": "oceanic_grasp",
+        "wavelength": float(props.get("wavelength", 550.0)),
+        "wind_speed": float(props.get("wind_speed", 5.0)),
+        "water_ior": float(props.get("water_ior", 1.33)),
+    }
+
+
+def convert_oceanic_6s(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert legacy 6S oceanic model."""
+    return {
+        "type": "oceanic_6s",
+        "wavelength": float(props.get("wavelength", 550.0)),
+        "wind_speed": float(props.get("wind_speed", 5.0)),
+        "chlorinity": float(props.get("chlorinity", 0.0)),
+        "pigmentation": float(props.get("pigmentation", 0.0)),
+    }
+
+
+def convert_oceanic_mishchenko(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Mishchenko oceanic model."""
+    return {
+        "type": "oceanic_mishchenko",
+        "wind_speed": float(props.get("wind_speed", 5.0)),
+        "water_ior": float(props.get("water_ior", 1.33)),
+    }
+
+
+def convert_selectbsdf(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert selector BSDF (texture-based material selection)."""
+    return {
+        "type": "selectbsdf",
+        "texture": props.get("texture", "uniform"),
+        "materials": props.get("materials", {}),
+    }
+
+
+def convert_measured(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert measured quasi-diffuse material."""
+    return {
+        "type": "measured",
+        "data": props.get("data", ""),
+        "scale": float(props.get("scale", 1.0)),
+    }
+
+
+# Material Converter Registry
+MATERIAL_CONVERTERS = {
+    # Mitsuba BSDFs
+    "diffuse": convert_diffuse,
+    "conductor": convert_conductor,
+    "roughconductor": convert_roughconductor,
+    "dielectric": convert_dielectric,
+    "plastic": convert_plastic,
+    # Eradiate BSDFs  
+    "bilambertian": convert_bilambertian,
+    "rpv": convert_rpv,
+    "rtls": convert_rtls,
+    "hapke": convert_hapke,
+    "oceanic_grasp": convert_oceanic_grasp,
+    "oceanic_6s": convert_oceanic_6s,
+    "oceanic_mishchenko": convert_oceanic_mishchenko,
+    "selectbsdf": convert_selectbsdf,
+    "measured": convert_measured,
+}
+
+
+def _ensure_list(value: Any) -> List[float]:
+    """Ensure value is a list of floats."""
+    if isinstance(value, (list, tuple)):
+        return [float(x) for x in value]
+    elif isinstance(value, (int, float)):
+        return [float(value)] * 3
+    else:
+        return [0.5, 0.5, 0.5]
+
+
+def _match_filename(filename: str, pattern: str, pattern_type: str = "wildcard") -> bool:
     """Check if filename matches pattern using specified matching strategy.
 
     Args:
@@ -512,65 +482,18 @@ def _match_filename(
         raise ValueError(f"Unknown pattern_type: {pattern_type}")
 
 
-def _validate_assets_and_materials(
-    assets: List[Dict[str, Any]], material_library: Dict[str, Dict[str, Any]]
-) -> None:
-    """Validate asset material references and PLY file existence.
-
-    Args:
-        assets: List of asset dictionaries
-        material_library: Material library dictionary
-
-    Raises:
-        ValueError: If validation fails
-    """
-    validation_errors = []
-
+def _validate_assets(assets: List[Dict[str, Any]], material_library: Dict[str, Dict[str, Any]]) -> None:
+    """Validate asset material references and PLY file existence."""
+    errors = []
+    
     for asset in assets:
         asset_id = asset["object_id"]
-
-        # Validate material reference
-        material_ref = asset["material"]
-        if material_ref not in material_library:
-            # Check if it might be a library material (not from XML)
-            validation_errors.append(
-                f"Asset '{asset_id}': Material reference '{material_ref}' not found in material library. "
-                f"Available from XML: {list(material_library.keys())}"
-            )
-
-        # Validate PLY file existence
+        
+        # Note: Material references may be external (from scene library) so we don't validate them here
+        # Only validate PLY file existence
         ply_path = Path(asset["ply_path"])
         if not ply_path.exists():
-            validation_errors.append(
-                f"Asset '{asset_id}': PLY file not found: {ply_path}"
-            )
-
-    if validation_errors:
-        error_msg = "Asset validation failed:\n" + "\n".join(
-            f"  - {error}" for error in validation_errors
-        )
-        raise ValueError(error_msg)
-
-
-def merge_material_libraries(
-    *libraries: Dict[str, Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
-    """Merge multiple material libraries, warning about conflicts.
-
-    Args:
-        *libraries: Variable number of material library dictionaries
-
-    Returns:
-        Merged material library
-    """
-    merged = {}
-
-    for i, library in enumerate(libraries):
-        for mat_id, mat_def in library.items():
-            if mat_id in merged:
-                logging.warning(
-                    f"Material '{mat_id}' already exists in library. Overwriting with definition from library {i + 1}."
-                )
-            merged[mat_id] = mat_def
-
-    return merged
+            errors.append(f"Asset '{asset_id}': PLY file not found: {ply_path}")
+    
+    if errors:
+        raise ValueError("Asset validation failed:\n" + "\n".join(f"  - {e}" for e in errors))

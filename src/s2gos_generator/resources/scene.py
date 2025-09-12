@@ -81,6 +81,9 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
     # Get additional material libraries (if any)
     additional_material_libraries = getattr(ctx, "additional_material_libraries", None)
 
+    # Get tree instances (if any)
+    tree_instances = getattr(ctx, "tree_instances", None)
+
     # Create scene description using existing function
     scene_description = create_s2gos_scene(
         scene_name=ctx.scene_name,
@@ -107,6 +110,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         hamster_data_paths=hamster_data_paths,
         processed_objects=processed_objects,
         additional_material_libraries=additional_material_libraries,
+        tree_instances=tree_instances,
     )
 
     # Save scene description to file

@@ -577,6 +577,9 @@ class SceneGenConfig(BaseModel):
     xml_scenes: list[XmlSceneConfig] = Field(
         [], description="XML scene files to import for additional assets and materials"
     )
+    trees_enabled: bool = Field(
+        False, description="Enable tree placement based on landcover data"
+    )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"
     )

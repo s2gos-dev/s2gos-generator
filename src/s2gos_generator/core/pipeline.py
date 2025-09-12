@@ -72,6 +72,7 @@ class SceneGenerationPipeline:
             generate_buffer_texture,
             generate_target_texture,
         )
+        from ..resources.trees import process_target_trees
 
         # Register resources with their dependencies
         
@@ -113,6 +114,7 @@ class SceneGenerationPipeline:
             ["aoi", "buffer_aoi", "background_aoi"],
             process_hamster_data,  # Requires config.hamster.enabled
         )
+        self.registry.register("target_trees", ["target_landcover", "target_dem"], process_target_trees)  # Requires config.trees_enabled
 
         # Scene description (dependencies will be updated by update_scene_dependencies)
         self.registry.register(

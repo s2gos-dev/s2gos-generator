@@ -316,6 +316,52 @@ def create_s2gos_scene(
     processed_objects = kwargs.get("processed_objects", [])
     objects = processed_objects if processed_objects else []
 
+    # Add trees if provided
+    tree_instances = kwargs.get("tree_instances", None)
+    if tree_instances:
+        # Create tree shapegroup and instances
+        from ..assets.xml_importer import create_tree_shapegroup
+        import os
+        
+        # Tree XML path (relative to this file)
+        tree_xml_path = os.path.join(os.path.dirname(__file__), "..", "data", "tree.xml")
+        
+        try:
+            tree_shapegroup, tree_materials = create_tree_shapegroup(tree_xml_path, output_dir)
+            
+            # Add tree materials to the materials dictionary
+            for mat_id, mat_def in tree_materials.items():
+                if mat_id not in materials:
+                    materials[mat_id] = Material.from_dict(mat_def, id=mat_id)
+            
+            # Create tree instances following Mitsuba pattern
+            tree_objects = {
+                "tree_group": tree_shapegroup,
+                **{
+                    f"tree_instance_{i}": {
+                        "type": "instance",
+                        "shapegroup": "tree_group",  # Use string ID, not nested object
+                        "to_world": {
+                            "type": "transform",
+                            "translate": tree_inst["position"],
+                            "rotate": [0, 0, tree_inst["rotation"]],  # Rotation around Z-axis
+                            "scale": tree_inst.get("scale", 1.0)
+                        }
+                    }
+                    for i, tree_inst in enumerate(tree_instances)
+                }
+            }
+            
+            # Add to objects list (convert to expected format)
+            objects.extend([tree_objects])
+            
+            import logging
+            logging.info(f"Added {len(tree_instances)} tree instances to scene")
+            
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to add trees to scene: {e}")
+
     scene_description = SceneDescription(
         name=scene_name,
         location={

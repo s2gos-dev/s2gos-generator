@@ -1,5 +1,6 @@
 import fnmatch
 import logging
+import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -480,6 +481,70 @@ def _match_filename(filename: str, pattern: str, pattern_type: str = "wildcard")
         return fnmatch.fnmatch(filename, pattern)
     else:
         raise ValueError(f"Unknown pattern_type: {pattern_type}")
+
+
+def create_tree_shapegroup(tree_xml_path: str, output_dir: Optional["UPath"] = None) -> Dict[str, Any]:
+    """Create Mitsuba shapegroup from tree XML file.
+    
+    Args:
+        tree_xml_path: Path to tree XML file
+        output_dir: Scene output directory where mesh files will be copied
+        
+    Returns:
+        Dictionary containing shapegroup definition for Mitsuba scene
+    """
+    # Parse the tree XML to extract shapes and materials
+    xml_data = _parse_xml(tree_xml_path)
+    materials = _convert_materials(xml_data["materials"])
+    
+    # Create shapegroup containing all tree components
+    shapegroup = {
+        "type": "shapegroup",
+        "id": "tree_group"
+    }
+    
+    # Setup output directory for tree meshes if provided
+    if output_dir:
+        from upath import UPath
+        tree_meshes_dir = UPath(output_dir) / "meshes" / "tree"
+        tree_meshes_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Add each PLY shape to the shapegroup
+    for i, shape in enumerate(xml_data["shapes"]):
+        shape_name = f"tree_component_{i}"
+        
+        # Get material reference - use proper reference format
+        material_id = shape["material"]
+        
+        # Handle file path - copy to output directory if provided
+        source_file_path = Path(shape["file"])
+        
+        if output_dir and source_file_path.exists():
+            # Copy mesh file to scene output directory
+            dest_filename = source_file_path.name
+            dest_path = tree_meshes_dir / dest_filename
+            
+            # Only copy if destination doesn't exist or is different
+            if not dest_path.exists():
+                shutil.copy2(source_file_path, dest_path)
+                logging.info(f"Copied tree mesh: {dest_filename}")
+            
+            # Use relative path from scene root
+            mesh_filename = f"meshes/tree/{dest_filename}"
+        else:
+            # Fallback to original path (absolute)
+            mesh_filename = str(source_file_path)
+            if output_dir and not source_file_path.exists():
+                logging.warning(f"Tree mesh file not found: {source_file_path}")
+        
+        shapegroup[shape_name] = {
+            "type": "ply",
+            "filename": mesh_filename,
+            "face_normals": True,
+            "bsdf": {"type": "ref", "id": material_id}
+        }
+    
+    return shapegroup, materials
 
 
 def _validate_assets(assets: List[Dict[str, Any]], material_library: Dict[str, Dict[str, Any]]) -> None:

@@ -10,7 +10,7 @@ version = "0.0.1"
 dependencies = [
     "s2gos-utils",
     "geopandas>=0.13.0",
-    "xarray>=2023.1.0",
+    "xarray>=2023.1.0,<2025",
     "pyproj>=3.4.0",
     "shapely>=2.0.0",
     "trimesh>=3.20.0",
@@ -22,7 +22,7 @@ dependencies = [
     "rioxarray>=0.13.0",
     "pyyaml>=6.0.0",
     "zarr>=2.18,<3.0",
-    "dask[array]>=2023.1.0",
+    "dask[array]>=2023.1.0,<2025",
     "psutil>=5.9.0",
     "graphviz>=0.20.0",
 ]

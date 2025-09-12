@@ -66,7 +66,7 @@ def process_buffer_dem(ctx: SceneResourceContext) -> Optional[Path]:
         dem_root_dir=ctx.config.data_sources.dem_root_dir,
     )
 
-    buffer_resolution_m = ctx.config.buffer.buffer_resolution_m
+    buffer_resolution_m = ctx.config.buffer_resolution_m
     dem_filename = f"dem_buffer_{ctx.scene_name}_{buffer_resolution_m}m.zarr"
     dem_output_path = ctx.data_dir / dem_filename
 
@@ -75,7 +75,7 @@ def process_buffer_dem(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Buffer AOI polygon not found in context")
         return None
 
-    buffer_size_km = ctx.config.buffer.buffer_size_km
+    buffer_size_km = ctx.config.buffer_size_km
     dem_processor.generate_dem(
         aoi_polygon=buffer_aoi_polygon,
         output_path=dem_output_path,

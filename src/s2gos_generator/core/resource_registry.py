@@ -88,7 +88,7 @@ class ResourceRegistry:
         """Remove disabled resources from registry based on configuration."""
         resources_to_remove = []
 
-        if not getattr(config, "buffer", None):
+        if not getattr(config, "enable_buffer", False):
             resources_to_remove.extend(
                 [
                     "buffer_aoi",
@@ -99,11 +99,7 @@ class ResourceRegistry:
                 ]
             )
 
-        if (
-            not getattr(config, "buffer", None) 
-            or not hasattr(config.buffer, "background_size_km")
-            or config.buffer.background_size_km <= 0
-        ):
+        if not getattr(config, "enable_background", False):
             resources_to_remove.extend(
                 ["background_aoi", "background_landcover", "background_texture"]
             )

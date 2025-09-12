@@ -115,7 +115,7 @@ class TextureGenerator:
         landcover_data.load()
 
         class_values = landcover_data.values
-
+        
         selection_texture = np.full_like(
             class_values, default_material_index, dtype=np.uint8
         )

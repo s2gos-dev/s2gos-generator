@@ -337,38 +337,6 @@ def _default_atmosphere_config() -> "AtmosphereConfig":
     )
 
 
-class BufferConfig(BaseModel):
-    """Combined buffer and background configuration.
-    
-    Note: Background features are included here but can be disabled independently
-    by setting background_size_km to 0 or omitting the buffer config entirely.
-    """
-
-    buffer_size_km: float = Field(..., gt=0.0, description="Buffer size in kilometers")
-    buffer_resolution_m: float = Field(
-        100.0, gt=0.0, description="Buffer resolution in meters"
-    )
-    background_elevation: float = Field(
-        0.0, description="Background elevation in meters"
-    )
-    background_size_km: float = Field(
-        100.0, ge=0.0, description="Background area size in kilometers (0 to disable)"
-    )
-    background_resolution_m: float = Field(
-        200.0, gt=0.0, description="Background resolution in meters"
-    )
-
-    @model_validator(mode="after")
-    def validate_buffer_config(self):
-        """Validate buffer configuration."""
-        if self.background_resolution_m < self.buffer_resolution_m:
-            raise ValueError(
-                "Background resolution must be equal to or lower than buffer resolution"
-            )
-
-        return self
-
-
 class HamsterConfig(BaseModel):
     """HAMSTER albedo data configuration for baresoil material replacement."""
 
@@ -565,9 +533,15 @@ class SceneGenConfig(BaseModel):
         default_factory=_default_atmosphere_config,
         description="Atmosphere configuration",
     )
-    buffer: Optional[BufferConfig] = Field(
-        None, description="Buffer and background configuration"
-    )
+    enable_buffer: bool = Field(False, description="Enable buffer area processing")
+    enable_background: bool = Field(False, description="Enable background area processing")
+    
+    buffer_size_km: float = Field(60.0, gt=0.0, description="Buffer size in kilometers")
+    buffer_resolution_m: float = Field(100.0, gt=0.0, description="Buffer resolution in meters")
+    
+    background_size_km: float = Field(200.0, gt=0.0, description="Background area size in kilometers")
+    background_resolution_m: float = Field(200.0, gt=0.0, description="Background resolution in meters")
+    background_elevation: float = Field(0.0, description="Background elevation in meters")
     hamster: Optional[HamsterConfig] = Field(
         None, description="HAMSTER albedo data configuration for baresoil"
     )
@@ -604,8 +578,8 @@ class SceneGenConfig(BaseModel):
     @model_validator(mode="after")
     def validate_scene_config(self):
         """Validate complete scene configuration."""
-        if self.buffer:
-            if self.buffer.buffer_size_km <= self.location.aoi_size_km:
+        if self.enable_buffer:
+            if self.buffer_size_km <= self.location.aoi_size_km:
                 raise ValueError("Buffer size must be larger than AOI size")
 
         return self
@@ -635,26 +609,6 @@ class SceneGenConfig(BaseModel):
 
         return cls(**data)
 
-    def enable_buffer_system(
-        self,
-        buffer_size_km: float,
-        buffer_resolution_m: float = 100.0,
-        background_elevation: float = 0.0,
-        background_size_km: float = 100.0,
-        background_resolution_m: float = 200.0,
-    ):
-        """Enable and configure buffer/background system."""
-        self.buffer = BufferConfig(
-            buffer_size_km=buffer_size_km,
-            buffer_resolution_m=buffer_resolution_m,
-            background_elevation=background_elevation,
-            background_size_km=background_size_km,
-            background_resolution_m=background_resolution_m,
-        )
-
-    def disable_buffer_system(self):
-        """Disable buffer/background system."""
-        self.buffer = None
 
     def enable_hamster_albedo(
         self,
@@ -719,8 +673,8 @@ class SceneGenConfig(BaseModel):
         """Validate the complete configuration and return any errors."""
         errors = []
 
-        if self.buffer:
-            if self.buffer.buffer_size_km <= self.location.aoi_size_km:
+        if self.enable_buffer:
+            if self.buffer_size_km <= self.location.aoi_size_km:
                 errors.append("Buffer size must be larger than AOI size")
 
         for xml_scene_config in self.xml_scenes:
@@ -751,8 +705,13 @@ class SceneGenConfig(BaseModel):
 
     @property
     def has_buffer(self) -> bool:
-        """Check if buffer/background system is enabled."""
-        return self.buffer is not None
+        """Check if buffer area is enabled."""
+        return self.enable_buffer
+
+    @property
+    def has_background(self) -> bool:
+        """Check if background area is enabled."""
+        return self.enable_background
 
 
 def create_scene_config(

@@ -46,7 +46,7 @@ def generate_buffer_aoi(ctx: SceneResourceContext) -> Optional[Path]:
         None (buffer AOI polygon is stored in context)
     """
 
-    buffer_size_km = ctx.config.buffer.buffer_size_km
+    buffer_size_km = ctx.config.buffer_size_km
     
     coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
     buffer_aoi_polygon = coords.create_scene_polygon(buffer_size_km)
@@ -67,7 +67,7 @@ def generate_background_aoi(ctx: SceneResourceContext) -> Optional[Path]:
         None (background AOI polygon is stored in context)
     """
 
-    background_size_km = ctx.config.buffer.background_size_km
+    background_size_km = ctx.config.background_size_km
     
     coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
     background_aoi_polygon = coords.create_scene_polygon(background_size_km)

@@ -237,6 +237,7 @@ def create_s2gos_scene(
             else:
                 buffer["hamster_data"] = str(hamster_data_paths["buffer"])
 
+    if background_selection_texture and background_size_km:
         bg_elevation = 0.0
         if background_elevation is not None:
             bg_elevation = background_elevation
@@ -266,22 +267,19 @@ def create_s2gos_scene(
                 )
                 bg_elevation = 0.0
 
-        if background_selection_texture and background_size_km:
-            background = {
-                "selection_texture": background_selection_texture,
-                "elevation": bg_elevation,
-                "size_km": background_size_km,
-            }
+        background = {
+            "selection_texture": background_selection_texture,
+            "elevation": bg_elevation,
+            "size_km": background_size_km,
+        }
 
-            if hamster_data_paths and "background" in hamster_data_paths:
-                if output_dir:
-                    background["hamster_data"] = str(
-                        hamster_data_paths["background"].relative_to(output_dir)
-                    )
-                else:
-                    background["hamster_data"] = str(hamster_data_paths["background"])
-        else:
-            background = None
+        if hamster_data_paths and "background" in hamster_data_paths:
+            if output_dir:
+                background["hamster_data"] = str(
+                    hamster_data_paths["background"].relative_to(output_dir)
+                )
+            else:
+                background["hamster_data"] = str(hamster_data_paths["background"])
 
     materials = load_materials(material_config_path)
 
@@ -320,8 +318,9 @@ def create_s2gos_scene(
     tree_instances = kwargs.get("tree_instances", None)
     if tree_instances:
         # Create tree shapegroup and instances
-        from ..assets.xml_importer import create_tree_shapegroup
         import os
+
+        from ..assets.xml_importer import create_tree_shapegroup
         
         # Tree XML path (relative to this file)
         tree_xml_path = os.path.join(os.path.dirname(__file__), "..", "data", "tree.xml")

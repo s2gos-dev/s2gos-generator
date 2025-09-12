@@ -114,6 +114,7 @@ class LandCoverProcessor(BaseTileProcessor):
                 center_lat,
                 center_lon,
                 aoi_size_km,
+                fillna_value=self.default_fill_value,
             )
 
         self._save_dataset(clipped_landcover, output_path)

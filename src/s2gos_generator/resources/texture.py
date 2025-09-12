@@ -63,7 +63,7 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
     texture_generator = TextureGenerator()
 
     # Generate buffer textures
-    buffer_resolution_m = ctx.config.buffer.buffer_resolution_m
+    buffer_resolution_m = ctx.config.buffer_resolution_m
     selection_texture_path, preview_texture_path = (
         texture_generator.generate_textures_from_file(
             landcover_file_path=buffer_landcover_file_path,
@@ -99,7 +99,7 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
     texture_generator = TextureGenerator()
 
     # Generate background textures
-    background_resolution_m = ctx.config.buffer.background_resolution_m
+    background_resolution_m = ctx.config.background_resolution_m
     selection_texture_path, preview_texture_path = (
         texture_generator.generate_textures_from_file(
             landcover_file_path=background_landcover_file_path,

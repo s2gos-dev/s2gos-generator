@@ -41,7 +41,6 @@ class SceneGenerationPipeline:
 
         self._process_xml_scenes()
         self._register_resources()
-        self.registry.filter_by_config(self.config)
         self.registry.update_scene_dependencies()
         self._setup_output_directories()
         self._log_registered_resources()
@@ -85,36 +84,33 @@ class SceneGenerationPipeline:
             "target_texture", ["target_landcover"], generate_target_texture
         )
 
-        # Buffer resources - included if config.buffer exists
-        self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
-        self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
-        self.registry.register(
-            "buffer_landcover", ["buffer_aoi"], process_buffer_landcover
-        )
-        self.registry.register("buffer_mesh", ["buffer_dem"], generate_buffer_mesh)
-        self.registry.register(
-            "buffer_texture", ["buffer_landcover"], generate_buffer_texture
-        )
+        if self.config.enable_buffer:
+            self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
+            self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
+            self.registry.register("buffer_landcover", ["buffer_aoi"], process_buffer_landcover)
+            self.registry.register("buffer_mesh", ["buffer_dem"], generate_buffer_mesh)
+            self.registry.register("buffer_texture", ["buffer_landcover"], generate_buffer_texture)
 
-        # Background resources - included if config.buffer.background_size_km > 0
-        self.registry.register(
-            "background_aoi", ["buffer_aoi"], generate_background_aoi
-        )
-        self.registry.register(
-            "background_landcover", ["background_aoi"], process_background_landcover
-        )
-        self.registry.register(
-            "background_texture", ["background_landcover"], generate_background_texture
-        )
+        if self.config.enable_background:
+            self.registry.register("background_aoi", ["aoi"], generate_background_aoi)
+            self.registry.register("background_landcover", ["background_aoi"], process_background_landcover)
+            self.registry.register("background_texture", ["background_landcover"], generate_background_texture)
 
-        # Optional resources - filtered based on config
-        self.registry.register("user_assets", ["target_dem"], process_user_assets)  # Requires config.user_assets
-        self.registry.register(
-            "hamster_data",
-            ["aoi", "buffer_aoi", "background_aoi"],
-            process_hamster_data,  # Requires config.hamster.enabled
-        )
-        self.registry.register("target_trees", ["target_landcover", "target_dem"], process_target_trees)  # Requires config.trees_enabled
+        # Optional resources
+        if self.config.user_assets:
+            self.registry.register("user_assets", ["target_dem"], process_user_assets)
+            
+        if self.config.hamster and self.config.hamster.enabled:
+            # HAMSTER adapts to what was registered
+            hamster_deps = ["aoi"]
+            if "buffer_aoi" in self.registry.resources:
+                hamster_deps.append("buffer_aoi")
+            if "background_aoi" in self.registry.resources:
+                hamster_deps.append("background_aoi")
+            self.registry.register("hamster_data", hamster_deps, process_hamster_data)
+            
+        if self.config.trees_enabled:
+            self.registry.register("target_trees", ["target_landcover", "target_dem"], process_target_trees)
 
         # Scene description (dependencies will be updated by update_scene_dependencies)
         self.registry.register(

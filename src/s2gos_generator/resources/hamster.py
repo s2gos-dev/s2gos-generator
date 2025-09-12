@@ -4,8 +4,11 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import xarray as xr
+from s2gos_utils.io.paths import mkdir
 from upath import UPath
+from xarray_regrid import Regridder
 
 from ..core.context import SceneResourceContext
 
@@ -101,15 +104,14 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
                 )
             else:
                 buffer_dataset = buffer_subset.to_dataset(name=var_name)
-                buffer_filename = f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer.buffer_resolution_m}m.zarr"
+                buffer_filename = f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer_resolution_m}m.zarr"
                 buffer_path = ctx.data_dir / buffer_filename
                 _save_hamster_dataset(buffer_dataset, buffer_path)
                 result_paths["buffer"] = buffer_path
 
         # Process background area if enabled
         if (
-            ctx.has_buffer
-            and hasattr(ctx.config.buffer, "background_size_km")
+            ctx.has_background
             and ctx._background_aoi_polygon is not None
         ):
             bg_bounds = ctx._background_aoi_polygon.bounds
@@ -127,7 +129,7 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
                 )
             else:
                 bg_dataset = bg_subset.to_dataset(name=var_name)
-                bg_filename = f"hamster_{ctx.scene_name}_background_{ctx.config.buffer.background_resolution_m}m.zarr"
+                bg_filename = f"hamster_{ctx.scene_name}_background_{ctx.config.background_resolution_m}m.zarr"
                 bg_path = ctx.data_dir / bg_filename
                 _save_hamster_dataset(bg_dataset, bg_path)
                 result_paths["background"] = bg_path
@@ -150,9 +152,32 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
             raise RuntimeError(f"Failed to load HAMSTER data: {e}") from e
 
 
-def _save_hamster_dataset(dataset: xr.Dataset, output_path: UPath) -> None:
-    """Save HAMSTER dataset to zarr format."""
-    from s2gos_utils.io.paths import mkdir
+def _save_hamster_dataset(dataset: xr.Dataset, output_path: UPath, upscale_factor: int = 1) -> None:
+    """Save HAMSTER dataset to zarr format, with optional upscaling."""
 
     mkdir(output_path.parent)
-    dataset.to_zarr(output_path, mode="w")
+
+    if upscale_factor > 1 and 'latitude' in dataset.dims and 'longitude' in dataset.dims:
+        new_lat_size = len(dataset.latitude) * upscale_factor
+        new_lon_size = len(dataset.longitude) * upscale_factor
+
+        lat_coords = dataset.latitude.values
+        if lat_coords[0] > lat_coords[-1]:
+            new_lat = np.linspace(lat_coords.max(), lat_coords.min(), new_lat_size)
+        else:
+            new_lat = np.linspace(lat_coords.min(), lat_coords.max(), new_lat_size)
+
+        lon_coords = dataset.longitude.values
+        new_lon = np.linspace(lon_coords.min(), lon_coords.max(), new_lon_size)
+
+        target_grid = xr.Dataset({
+            'latitude': new_lat,
+            'longitude': new_lon,
+        })
+
+        regridder = Regridder(dataset)
+        dataset_to_save = regridder.cubic(target_grid)
+    else:
+        dataset_to_save = dataset
+
+    dataset_to_save.to_zarr(output_path, mode="w")

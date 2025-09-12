@@ -67,7 +67,7 @@ def process_buffer_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     )
 
     # Generate output path
-    buffer_resolution_m = ctx.config.buffer.buffer_resolution_m
+    buffer_resolution_m = ctx.config.buffer_resolution_m
     landcover_filename = (
         f"landcover_buffer_{ctx.scene_name}_{buffer_resolution_m}m.zarr"
     )
@@ -80,7 +80,7 @@ def process_buffer_landcover(ctx: SceneResourceContext) -> Optional[Path]:
         return None
 
     # Process buffer land cover
-    buffer_size_km = ctx.config.buffer.buffer_size_km
+    buffer_size_km = ctx.config.buffer_size_km
     landcover_processor.generate_landcover(
         aoi_polygon=buffer_aoi_polygon,
         output_path=landcover_output_path,
@@ -113,7 +113,7 @@ def process_background_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     )
 
     # Generate output path
-    background_resolution_m = ctx.config.buffer.background_resolution_m
+    background_resolution_m = ctx.config.background_resolution_m
     landcover_filename = (
         f"landcover_background_{ctx.scene_name}_{background_resolution_m}m.zarr"
     )
@@ -126,7 +126,7 @@ def process_background_landcover(ctx: SceneResourceContext) -> Optional[Path]:
         return None
 
     # Process background land cover
-    background_size_km = ctx.config.buffer.background_size_km
+    background_size_km = ctx.config.background_size_km
     landcover_processor.generate_landcover(
         aoi_polygon=background_aoi_polygon,
         output_path=landcover_output_path,

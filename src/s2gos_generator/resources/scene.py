@@ -76,6 +76,10 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
 
     # Get HAMSTER data paths
     hamster_data_paths = getattr(ctx, "hamster_data_paths", None)
+    if hamster_data_paths:
+        logging.info(f"Scene description found HAMSTER data paths: {hamster_data_paths}")
+    else:
+        logging.info("Scene description: No HAMSTER data paths found in context")
 
     # Get additional material libraries (if any)
     additional_material_libraries = getattr(ctx, "additional_material_libraries", None)

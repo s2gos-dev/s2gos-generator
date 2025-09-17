@@ -4,8 +4,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from pyproj import Transformer
 from s2gos_utils.io.paths import mkdir
 from upath import UPath
 from xarray_regrid import Regridder
@@ -56,90 +58,63 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
                 raise KeyError(f"Variable '{var_name}' not found in HAMSTER dataset")
 
         albedo_data = ds[var_name]
+
+        center_lat = ctx.center_lat
+        center_lon = ctx.center_lon
+        proj_string = f"+proj=omerc +lat_0={center_lat} +lonc={center_lon} +alpha=0 +k=1 +x_0=0 +y_0=0 +R=6371000 +units=m +no_defs"
+
+        albedo_data = albedo_data.transpose('wavelength', 'latitude', 'longitude')
+        albedo_data = albedo_data.rio.set_spatial_dims(x_dim="longitude", y_dim="latitude")
+        albedo_data = albedo_data.rio.write_crs("EPSG:4326")
+
+        albedo_original = albedo_data.copy()
+        albedo_projected = albedo_data.rio.reproject(proj_string)
+
+        correct_y_coords = np.flip(albedo_projected.y.values)
+        albedo_data = albedo_projected.assign_coords(y=correct_y_coords)
+
+        target_x, target_y = 0.0, 0.0
+
+        logging.info(f"HAMSTER data projected using scene center ({center_lat:.6f}, {center_lon:.6f})")
+        logging.info(f"Target coordinates: ({target_x:.2f}, {target_y:.2f}) meters")
+        logging.info(f"Data bounds: x=[{albedo_data.x.min().item():.0f}, {albedo_data.x.max().item():.0f}], y=[{albedo_data.y.min().item():.0f}, {albedo_data.y.max().item():.0f}]")
+
+        # _create_hamster_preview(albedo_data_original=albedo_original,
+        #                        albedo_data_projected=albedo_data,
+        #                        output_dir=ctx.data_dir,
+        #                        scene_name=ctx.scene_name)
+
         result_paths = {}
 
-        # Process target area
         if ctx._target_aoi_polygon is not None:
-            target_bounds = ctx._target_aoi_polygon.bounds
-            target_lon_slice = slice(target_bounds[0], target_bounds[2])
-            target_lat_slice = slice(target_bounds[3], target_bounds[1])
+            path = _crop_and_save_area(albedo_data, "target", ctx.aoi_size_km,
+                                     f"hamster_{ctx.scene_name}_target_{ctx.target_resolution_m}m.zarr",
+                                     ctx.data_dir, var_name)
+            if path:
+                result_paths["target"] = path
 
-            if "latitude" in albedo_data.dims and "longitude" in albedo_data.dims:
-                target_subset = albedo_data.sel(
-                    longitude=target_lon_slice, latitude=target_lat_slice
-                )
-                
-                # Check if subset has any spatial data
-                if target_subset.sizes.get('latitude', 0) == 0 or target_subset.sizes.get('longitude', 0) == 0:
-                    logging.warning(
-                        f"HAMSTER data has no coverage for target area "
-                        f"(lat: {target_lat_slice}, lon: {target_lon_slice}). "
-                        "Falling back to standard baresoil."
-                    )
-                else:
-                    target_dataset = target_subset.to_dataset(name=var_name)
-                    target_filename = (
-                        f"hamster_{ctx.scene_name}_target_{ctx.target_resolution_m}m.zarr"
-                    )
-                    target_path = ctx.data_dir / target_filename
-                    _save_hamster_dataset(target_dataset, target_path)
-                    result_paths["target"] = target_path
-
-        # Process buffer area if enabled
         if ctx.has_buffer and ctx._buffer_aoi_polygon is not None:
-            buffer_bounds = ctx._buffer_aoi_polygon.bounds
-            buffer_lon_slice = slice(buffer_bounds[0], buffer_bounds[2])
-            buffer_lat_slice = slice(buffer_bounds[3], buffer_bounds[1])
+            path = _crop_and_save_area(albedo_data, "buffer", ctx.config.buffer_size_km,
+                                     f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer_resolution_m}m.zarr",
+                                     ctx.data_dir, var_name)
+            if path:
+                result_paths["buffer"] = path
 
-            buffer_subset = albedo_data.sel(
-                longitude=buffer_lon_slice, latitude=buffer_lat_slice
-            )
-            
-            # Check if subset has any spatial data
-            if buffer_subset.sizes.get('latitude', 0) == 0 or buffer_subset.sizes.get('longitude', 0) == 0:
-                logging.warning(
-                    f"HAMSTER data has no coverage for buffer area "
-                    f"(lat: {buffer_lat_slice}, lon: {buffer_lon_slice}). "
-                    "Falling back to standard baresoil."
-                )
-            else:
-                buffer_dataset = buffer_subset.to_dataset(name=var_name)
-                buffer_filename = f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer_resolution_m}m.zarr"
-                buffer_path = ctx.data_dir / buffer_filename
-                _save_hamster_dataset(buffer_dataset, buffer_path)
-                result_paths["buffer"] = buffer_path
+        if ctx.has_background and ctx._background_aoi_polygon is not None:
+            path = _crop_and_save_area(albedo_data, "background", ctx.config.background_size_km,
+                                     f"hamster_{ctx.scene_name}_background_{ctx.config.background_resolution_m}m.zarr",
+                                     ctx.data_dir, var_name)
+            if path:
+                result_paths["background"] = path
 
-        # Process background area if enabled
-        if (
-            ctx.has_background
-            and ctx._background_aoi_polygon is not None
-        ):
-            bg_bounds = ctx._background_aoi_polygon.bounds
-            bg_lon_slice = slice(bg_bounds[0], bg_bounds[2])
-            bg_lat_slice = slice(bg_bounds[3], bg_bounds[1])
-
-            bg_subset = albedo_data.sel(longitude=bg_lon_slice, latitude=bg_lat_slice)
-            
-            # Check if subset has any spatial data
-            if bg_subset.sizes.get('latitude', 0) == 0 or bg_subset.sizes.get('longitude', 0) == 0:
-                logging.warning(
-                    f"HAMSTER data has no coverage for background area "
-                    f"(lat: {bg_lat_slice}, lon: {bg_lon_slice}). "
-                    "Falling back to standard baresoil."
-                )
-            else:
-                bg_dataset = bg_subset.to_dataset(name=var_name)
-                bg_filename = f"hamster_{ctx.scene_name}_background_{ctx.config.background_resolution_m}m.zarr"
-                bg_path = ctx.data_dir / bg_filename
-                _save_hamster_dataset(bg_dataset, bg_path)
-                result_paths["background"] = bg_path
-
-        # Store result paths in context for scene description
         if result_paths:
             ctx.hamster_data_paths = result_paths
             logging.info(f"HAMSTER data processed for {len(result_paths)} areas")
-            return ctx.data_dir  # Return data directory as the "output"
+            for area, path in result_paths.items():
+                logging.info(f"  {area}: {path}")
+            return ctx.data_dir
         else:
+            logging.warning("No HAMSTER result paths - ctx.hamster_data_paths will not be set")
             return None
 
     except Exception as e:
@@ -157,27 +132,105 @@ def _save_hamster_dataset(dataset: xr.Dataset, output_path: UPath, upscale_facto
 
     mkdir(output_path.parent)
 
-    if upscale_factor > 1 and 'latitude' in dataset.dims and 'longitude' in dataset.dims:
-        new_lat_size = len(dataset.latitude) * upscale_factor
-        new_lon_size = len(dataset.longitude) * upscale_factor
+    # Handle both projected (x, y) and geographic (latitude, longitude) coordinates
+    if upscale_factor > 1:
+        if 'x' in dataset.dims and 'y' in dataset.dims:
+            # Projected coordinates
+            new_x_size = len(dataset.x) * upscale_factor
+            new_y_size = len(dataset.y) * upscale_factor
 
-        lat_coords = dataset.latitude.values
-        if lat_coords[0] > lat_coords[-1]:
-            new_lat = np.linspace(lat_coords.max(), lat_coords.min(), new_lat_size)
+            x_coords = dataset.x.values
+            y_coords = dataset.y.values
+
+            new_x = np.linspace(x_coords.min(), x_coords.max(), new_x_size)
+            new_y = np.linspace(y_coords.min(), y_coords.max(), new_y_size)
+
+            target_grid = xr.Dataset({
+                'x': new_x,
+                'y': new_y,
+            })
         else:
-            new_lat = np.linspace(lat_coords.min(), lat_coords.max(), new_lat_size)
+            # No upscaling if no recognized spatial dimensions
+            dataset_to_save = dataset
 
-        lon_coords = dataset.longitude.values
-        new_lon = np.linspace(lon_coords.min(), lon_coords.max(), new_lon_size)
-
-        target_grid = xr.Dataset({
-            'latitude': new_lat,
-            'longitude': new_lon,
-        })
-
-        regridder = Regridder(dataset)
-        dataset_to_save = regridder.cubic(target_grid)
+        if 'target_grid' in locals():
+            regridder = Regridder(dataset)
+            dataset_to_save = regridder.cubic(target_grid)
+        else:
+            dataset_to_save = dataset
     else:
         dataset_to_save = dataset
 
     dataset_to_save.to_zarr(output_path, mode="w")
+
+
+def _crop_and_save_area(albedo_data: xr.DataArray,
+                       area_name: str,
+                       size_km: float,
+                       filename: str,
+                       output_dir: UPath,
+                       var_name: str) -> Optional[UPath]:
+    """Crop HAMSTER data for specified area and save to file."""
+
+    half_size_m = (size_km * 1000) / 2
+
+    try:
+        subset = albedo_data.sel(
+            x=slice(-half_size_m, half_size_m),
+            y=slice(-half_size_m, half_size_m)
+        )
+
+        if subset.sizes.get('x', 0) == 0 or subset.sizes.get('y', 0) == 0:
+            logging.warning(f"No HAMSTER coverage for {area_name} area ({size_km}km)")
+            return None
+
+        dataset = subset.to_dataset(name=var_name)
+        output_path = output_dir / filename
+        _save_hamster_dataset(dataset, output_path)
+
+        actual_size = (subset.x.max().item() - subset.x.min().item()) / 1000
+        logging.info(f"HAMSTER {area_name}: {actual_size:.1f}km x {actual_size:.1f}km, {subset.sizes}")
+
+        return output_path
+
+    except Exception as e:
+        logging.error(f"Error processing {area_name} HAMSTER data: {e}")
+        return None
+
+
+# def _create_hamster_preview(albedo_data_original: xr.DataArray,
+#                            albedo_data_projected: xr.DataArray,
+#                            output_dir: UPath,
+#                            scene_name: str) -> None:
+#     """Create before/after plots showing original vs projected HAMSTER data."""
+
+#     try:
+#         rgb_bands = [640, 550, 470]
+#         fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+
+#         albedo_data_original.sel(wavelength=rgb_bands, method="nearest").plot.imshow(
+#             ax=axes[0], rgb="wavelength", robust=True
+#         )
+#         axes[0].set_title("Original Data (Geographic Coords)")
+#         axes[0].set_xlabel("Longitude")
+#         axes[0].set_ylabel("Latitude")
+
+#         albedo_data_projected.sel(wavelength=rgb_bands, method="nearest").plot.imshow(
+#             ax=axes[1], rgb="wavelength", robust=True
+#         )
+#         axes[1].set_title("Projected Data (Oblique Mercator)")
+#         axes[1].set_xlabel("X Coordinate (meters)")
+#         axes[1].set_ylabel("Y Coordinate (meters)")
+#         axes[1].set_aspect('equal', adjustable='box')
+
+#         plt.tight_layout()
+
+#         output_path = output_dir / f"hamster_{scene_name}_projection_preview.png"
+#         mkdir(output_path.parent)
+#         plt.savefig(output_path, dpi=150, bbox_inches='tight')
+#         plt.close()
+
+#         logging.info(f"HAMSTER projection preview saved: {output_path}")
+
+#     except Exception as e:
+#         logging.warning(f"Could not create HAMSTER projection preview: {e}")

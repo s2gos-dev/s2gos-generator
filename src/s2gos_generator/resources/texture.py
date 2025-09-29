@@ -18,25 +18,23 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
         Path to the generated target selection texture file
     """
 
-    # Get landcover file path from dependency
     landcover_file_path = ctx.dependency_outputs["target_landcover"]
     if landcover_file_path is None:
         raise ValueError("Target landcover file not found from dependencies")
 
-    # Initialize texture generator
     texture_generator = TextureGenerator()
 
-    # Generate textures
+    resolution_str = f"{ctx.target_resolution_m}m"
+
     selection_texture_path, preview_texture_path = (
         texture_generator.generate_textures_from_file(
             landcover_file_path=landcover_file_path,
             output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_{ctx.target_resolution_m}m",
+            base_name=f"{ctx.scene_name}_{resolution_str}",
             create_preview=ctx.config.processing.generate_texture_preview,
         )
     )
 
-    # Store in assets
     ctx.assets.selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.preview_texture_file = preview_texture_path
@@ -59,21 +57,20 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Buffer landcover file not found from dependencies")
         return None
 
-    # Initialize texture generator
     texture_generator = TextureGenerator()
 
-    # Generate buffer textures
     buffer_resolution_m = ctx.config.buffer_resolution_m
+    resolution_str = f"{buffer_resolution_m}m"
+
     selection_texture_path, preview_texture_path = (
         texture_generator.generate_textures_from_file(
             landcover_file_path=buffer_landcover_file_path,
             output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_buffer_{buffer_resolution_m}m",
+            base_name=f"{ctx.scene_name}_buffer_{resolution_str}",
             create_preview=ctx.config.processing.generate_texture_preview,
         )
     )
 
-    # Store in assets
     ctx.assets.buffer_selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.buffer_preview_texture_file = preview_texture_path
@@ -95,11 +92,9 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Background landcover file not found from dependencies")
         return None
 
-    # Initialize texture generator
     texture_generator = TextureGenerator()
-
-    # Generate background textures
     background_resolution_m = ctx.config.background_resolution_m
+
     selection_texture_path, preview_texture_path = (
         texture_generator.generate_textures_from_file(
             landcover_file_path=background_landcover_file_path,
@@ -109,7 +104,6 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
         )
     )
 
-    # Store in assets
     ctx.assets.background_selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.background_preview_texture_file = preview_texture_path

@@ -84,8 +84,8 @@ def simple_scene_generation_example():
     print(f"  Location: {config.location.center_lat:.4f}°, {config.location.center_lon:.4f}°")
     print(f"  AOI: {config.location.aoi_size_km} km²")
     print(f"  Resolution: {config.processing.target_resolution_m} m")
-    print(f"  Buffer: {config.buffer.buffer_size_km} km at {config.buffer.buffer_resolution_m} m resolution")
-    print(f"  Background: at {config.buffer.background_elevation} m elevation, {config.buffer.background_resolution_m} m resolution")
+    print(f"  Buffer: {config.buffer.size_km} km at {config.buffer.resolution_m} m resolution")
+    print(f"  Background: at {config.background.elevation} m elevation, {config.background.resolution_m} m resolution")
     print(f"  Atmosphere: {config.atmosphere.details.type}")
     print(f"  Output: {config.scene_output_dir}")
     
@@ -114,9 +114,9 @@ def simple_scene_generation_example():
         print(f"  Target texture: {config.textures_dir / f'{config.scene_name}_{config.processing.target_resolution_m}m_selection.png'}")
         if config.has_buffer:
             print(f"  Buffer mesh: {config.meshes_dir / f'{config.scene_name}_buffer_terrain.ply'}")
-            print(f"  Buffer texture: {config.textures_dir / f'{config.scene_name}_buffer_{config.buffer.buffer_resolution_m}m_selection.png'}")
-            print(f"  Background texture: {config.textures_dir / f'{config.scene_name}_background_{config.buffer.background_resolution_m}m_selection.png'}")
-            print(f"  Buffer mask: {config.textures_dir / f'mask_{config.scene_name}_{config.buffer.buffer_size_km}km_buffer_{config.location.aoi_size_km}km_target.bmp'}")
+            print(f"  Buffer texture: {config.textures_dir / f'{config.scene_name}_buffer_{config.buffer.resolution_m}m_selection.png'}")
+            print(f"  Background texture: {config.textures_dir / f'{config.scene_name}_background_{config.background.resolution_m}m_selection.png'}")
+            print(f"  Buffer mask: {config.textures_dir / f'mask_{config.scene_name}_{config.buffer.size_km}km_buffer_{config.location.aoi_size_km}km_target.bmp'}")
         
         print(f"\nScene configuration saved to: {config.scene_output_dir / f'{scene_description.name}.yml'}")
         

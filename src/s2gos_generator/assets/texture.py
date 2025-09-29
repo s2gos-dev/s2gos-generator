@@ -6,6 +6,11 @@ import xarray as xr
 from PIL import Image
 from upath import UPath
 
+PERMANENT_WATER_MATERIAL_INDEX = 7
+UNKNOWN_MATERIAL_PREVIEW_VALUE = -1
+GRAY_COLOR = (128, 128, 128)
+MAX_PIXEL_VALUE = 255
+
 DEFAULT_MATERIALS = [
     {
         "name": "Tree cover",
@@ -98,7 +103,7 @@ class TextureGenerator:
         landcover_data: xr.DataArray,
         output_path: UPath,
         flip_vertical: bool = False,
-        default_material_index: int = 7,
+        default_material_index: int = PERMANENT_WATER_MATERIAL_INDEX,
     ) -> np.ndarray:
         """
         Converts land cover classification data to a material selection texture.
@@ -113,9 +118,21 @@ class TextureGenerator:
             The selection texture as a numpy array.
         """
         landcover_data.load()
-
         class_values = landcover_data.values
-        
+
+        if np.any(np.isnan(class_values)):
+            nan_count = np.sum(np.isnan(class_values))
+            logging.info(
+                f"Found {nan_count} NaN values in landcover data, replacing with default material index {default_material_index}"
+            )
+            class_values = np.where(
+                np.isnan(class_values), default_material_index, class_values
+            )
+
+        class_values = np.nan_to_num(class_values, nan=default_material_index).astype(
+            np.uint8
+        )
+
         selection_texture = np.full_like(
             class_values, default_material_index, dtype=np.uint8
         )
@@ -152,6 +169,19 @@ class TextureGenerator:
         landcover_data.load()
         class_values = landcover_data.values
 
+        if np.any(np.isnan(class_values)):
+            nan_count = np.sum(np.isnan(class_values))
+            logging.info(
+                f"Found {nan_count} NaN values in preview texture, using gray {GRAY_COLOR} for unknown areas"
+            )
+            class_values = np.where(
+                np.isnan(class_values), UNKNOWN_MATERIAL_PREVIEW_VALUE, class_values
+            )
+
+        class_values = np.nan_to_num(
+            class_values, nan=UNKNOWN_MATERIAL_PREVIEW_VALUE
+        ).astype(np.int32)
+
         height, width = class_values.shape
         color_texture = np.zeros((height, width, 3), dtype=np.uint8)
 
@@ -163,7 +193,7 @@ class TextureGenerator:
 
         known_classes = set(mat["esa_class"] for mat in self.materials)
         unknown_mask = ~np.isin(class_values, list(known_classes))
-        color_texture[unknown_mask] = (128, 128, 128)
+        color_texture[unknown_mask] = GRAY_COLOR
 
         if flip_vertical:
             color_texture = np.flipud(color_texture)
@@ -176,6 +206,20 @@ class TextureGenerator:
         """Save selection texture as a grayscale PNG."""
         from s2gos_utils.io.paths import mkdir
 
+        if np.any(np.isnan(texture)) or np.any(np.isinf(texture)):
+            logging.warning(
+                "Found NaN/inf values in selection texture before saving, cleaning..."
+            )
+            texture = np.nan_to_num(
+                texture,
+                nan=PERMANENT_WATER_MATERIAL_INDEX,
+                posinf=MAX_PIXEL_VALUE,
+                neginf=0,
+            ).astype(np.uint8)
+
+        if texture.dtype != np.uint8:
+            texture = np.clip(texture, 0, MAX_PIXEL_VALUE).astype(np.uint8)
+
         mkdir(output_path.parent)
         image = Image.fromarray(texture, mode="L")
         image.save(output_path)
@@ -183,6 +227,17 @@ class TextureGenerator:
     def _save_color_texture(self, texture: np.ndarray, output_path: UPath) -> None:
         """Save color texture as RGB PNG."""
         from s2gos_utils.io.paths import mkdir
+
+        if np.any(np.isnan(texture)) or np.any(np.isinf(texture)):
+            logging.warning(
+                "Found NaN/inf values in color texture before saving, cleaning..."
+            )
+            texture = np.nan_to_num(
+                texture, nan=GRAY_COLOR[0], posinf=MAX_PIXEL_VALUE, neginf=0
+            ).astype(np.uint8)
+
+        if texture.dtype != np.uint8:
+            texture = np.clip(texture, 0, MAX_PIXEL_VALUE).astype(np.uint8)
 
         mkdir(output_path.parent)
         image = Image.fromarray(texture, mode="RGB")
@@ -219,6 +274,12 @@ class TextureGenerator:
 
         class_stats = {}
         for cls, count in zip(unique_classes, counts):
+            if np.isnan(cls):
+                logging.info(
+                    f"Skipping {count} NaN pixels ({(count / total_pixels) * 100:.2f}%) in landcover analysis"
+                )
+                continue
+
             percentage = (count / total_pixels) * 100
             material_name = "Unknown"
 
@@ -299,7 +360,7 @@ class TextureGenerator:
             Path to the generated mask file
         """
 
-        mask = np.ones((mask_size, mask_size), dtype=np.uint8) * 255
+        mask = np.ones((mask_size, mask_size), dtype=np.uint8) * MAX_PIXEL_VALUE
 
         center = mask_size // 2
         half_target = target_size // 2

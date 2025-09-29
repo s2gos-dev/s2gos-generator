@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-# Import coordinate transformation system
 from s2gos_utils.coordinates import CoordinateSystem
 
 from ..core.context import SceneResourceContext
@@ -26,14 +25,13 @@ def generate_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
     aoi_polygon = coords.create_scene_polygon(ctx.aoi_size_km)
 
-    # Store the AOI polygon in context for other resources
     ctx._target_aoi_polygon = aoi_polygon
 
     logging.info(
         f"AOI polygon: {ctx.aoi_size_km}km x {ctx.aoi_size_km}km at ({ctx.center_lat:.6f}, {ctx.center_lon:.6f})"
     )
 
-    return None  # AOI is stored in context, no file output
+    return None
 
 
 def generate_buffer_aoi(ctx: SceneResourceContext) -> Optional[Path]:
@@ -47,11 +45,10 @@ def generate_buffer_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     buffer_size_km = ctx.config.buffer_size_km
-    
+
     coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
     buffer_aoi_polygon = coords.create_scene_polygon(buffer_size_km)
 
-    # Store the buffer AOI polygon in context
     ctx._buffer_aoi_polygon = buffer_aoi_polygon
 
     return None
@@ -68,11 +65,10 @@ def generate_background_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     background_size_km = ctx.config.background_size_km
-    
+
     coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
     background_aoi_polygon = coords.create_scene_polygon(background_size_km)
 
-    # Store the background AOI polygon in context
     ctx._background_aoi_polygon = background_aoi_polygon
 
     return None

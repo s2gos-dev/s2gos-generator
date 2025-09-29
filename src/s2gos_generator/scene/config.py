@@ -1,3 +1,5 @@
+import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -260,8 +262,6 @@ def create_s2gos_scene(
                         var_name = list(dem_data.data_vars.keys())[0]
                         bg_elevation = float(dem_data[var_name].mean().values)
             except Exception as e:
-                import logging
-
                 logging.warning(
                     f"Could not calculate average elevation from {buffer_dem_file}: {e}"
                 )
@@ -314,52 +314,85 @@ def create_s2gos_scene(
     processed_objects = kwargs.get("processed_objects", [])
     objects = processed_objects if processed_objects else []
 
-    # Add trees if provided
-    tree_instances = kwargs.get("tree_instances", None)
-    if tree_instances:
-        # Create tree shapegroup and instances
-        import os
-
+    tree_collection_references = kwargs.get("tree_collection_references", None)
+    if tree_collection_references:
         from ..assets.xml_importer import create_tree_shapegroup
-        
-        # Tree XML path (relative to this file)
-        tree_xml_path = os.path.join(os.path.dirname(__file__), "..", "data", "tree.xml")
-        
-        try:
-            tree_shapegroup, tree_materials = create_tree_shapegroup(tree_xml_path, output_dir)
-            
-            # Add tree materials to the materials dictionary
-            for mat_id, mat_def in tree_materials.items():
-                if mat_id not in materials:
-                    materials[mat_id] = Material.from_dict(mat_def, id=mat_id)
-            
-            # Create tree instances following Mitsuba pattern
-            tree_objects = {
-                "tree_group": tree_shapegroup,
-                **{
-                    f"tree_instance_{i}": {
-                        "type": "instance",
-                        "shapegroup": "tree_group",  # Use string ID, not nested object
-                        "to_world": {
-                            "type": "transform",
-                            "translate": tree_inst["position"],
-                            "rotate": [0, 0, tree_inst["rotation"]],  # Rotation around Z-axis
-                            "scale": tree_inst.get("scale", 1.0)
+        from ..resources.vegetation import load_tree_collection_binary
+
+        logging.info(
+            f"Loading {len(tree_collection_references)} tree collections from binary format"
+        )
+        for tree_collection in tree_collection_references:
+            try:
+                data_file = tree_collection["data_file"]
+                if output_dir:
+                    binary_path = output_dir / data_file
+                else:
+                    binary_path = data_file
+
+                tree_data_array = load_tree_collection_binary(binary_path)
+
+                if len(tree_data_array) > 0:
+                    species_name = tree_collection["name"]
+                    tree_xml_file = tree_collection.get("model_file", "tree.xml")
+                    tree_xml_path = os.path.join(
+                        os.path.dirname(__file__), "..", "data", tree_xml_file
+                    )
+
+                    tree_shapegroup, tree_materials = create_tree_shapegroup(
+                        tree_xml_path, output_dir
+                    )
+                    for mat_id, mat_def in tree_materials.items():
+                        namespaced_mat_id = f"{species_name}_{mat_id}"
+                        if namespaced_mat_id not in materials:
+                            materials[namespaced_mat_id] = Material.from_dict(
+                                mat_def, id=namespaced_mat_id
+                            )
+
+                    for component_key, component in tree_shapegroup.items():
+                        if isinstance(component, dict) and "bsdf" in component:
+                            original_mat_id = component["bsdf"]["id"]
+                            if original_mat_id.startswith("_mat_"):
+                                raw_mat_id = original_mat_id[
+                                    5:
+                                ]  # Remove '_mat_' prefix
+                                component["bsdf"]["id"] = (
+                                    f"_mat_{species_name}_{raw_mat_id}"
+                                )
+
+                    species_shapegroup_id = f"tree_shapegroup_{species_name}"
+                    species_group_id = f"tree_group_{species_name}"
+
+                    tree_shapegroup["id"] = species_group_id
+
+                    objects.append(
+                        {
+                            "object_id": species_shapegroup_id,
+                            "type": "shapegroup",
+                            **tree_shapegroup,
                         }
+                    )
+
+                    tree_collection_obj = {
+                        "object_id": f"tree_collection_{species_name}",
+                        "type": "tree_collection",
+                        "shapegroup_ref": species_group_id,
+                        "data_file": data_file
+                        if not output_dir
+                        else str(binary_path.relative_to(output_dir)),
+                        "count": len(tree_data_array),
+                        "collection_name": species_name,
                     }
-                    for i, tree_inst in enumerate(tree_instances)
-                }
-            }
-            
-            # Add to objects list (convert to expected format)
-            objects.extend([tree_objects])
-            
-            import logging
-            logging.info(f"Added {len(tree_instances)} tree instances to scene")
-            
-        except Exception as e:
-            import logging
-            logging.warning(f"Failed to add trees to scene: {e}")
+                    objects.append(tree_collection_obj)
+
+                    logging.info(
+                        f"Added tree collection with {len(tree_data_array)} instances from binary collection '{tree_collection['name']}'"
+                    )
+
+            except Exception as e:
+                logging.warning(
+                    f"Failed to load binary tree collection '{tree_collection.get('name', 'unknown')}': {e}"
+                )
 
     scene_description = SceneDescription(
         name=scene_name,

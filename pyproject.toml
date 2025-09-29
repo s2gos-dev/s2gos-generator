@@ -23,6 +23,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "zarr>=2.18,<3.0",
     "dask[array]>=2023.1.0,<2025",
+    "sf-hamilton[pandera]",
     "psutil>=5.9.0",
     "graphviz>=0.20.0",
 ]

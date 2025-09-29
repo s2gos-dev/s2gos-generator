@@ -44,4 +44,3 @@ def create_aoi_polygon(
     lon_lat_coords = [transformer_from_local.transform(x, y) for x, y in local_corners]
 
     return Polygon(lon_lat_coords)
-

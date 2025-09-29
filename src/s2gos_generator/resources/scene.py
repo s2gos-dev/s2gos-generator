@@ -22,7 +22,6 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
     """
     logging.info("=== Creating Scene Description ===")
 
-    # Get required dependencies
     target_mesh_path = ctx.dependency_outputs["target_mesh"]
     target_texture_path = ctx.dependency_outputs["target_texture"]
 
@@ -31,11 +30,9 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
             "Required target mesh and texture files not found from dependencies"
         )
 
-    # Convert to relative paths
     mesh_path = str(target_mesh_path.relative_to(ctx.output_dir))
     texture_path = str(target_texture_path.relative_to(ctx.output_dir))
 
-    # Get optional buffer components
     buffer_mesh_path = None
     buffer_texture_path = None
     buffer_size_km = None
@@ -52,42 +49,68 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         buffer_texture_path = str(buffer_texture_file.relative_to(ctx.output_dir))
         buffer_size_km = ctx.config.buffer_size_km
 
-    # Get optional background components
     background_selection_texture = None
     background_size_km = None
 
     background_texture_file = ctx.dependency_outputs.get("background_texture")
-    if (
-        ctx.has_background
-        and background_texture_file is not None
-    ):
+    if ctx.has_background and background_texture_file is not None:
         background_selection_texture = str(
             background_texture_file.relative_to(ctx.output_dir)
         )
         background_size_km = ctx.config.background_size_km
 
-    # Get buffer DEM file for background elevation calculation
     buffer_dem_file = None
     if ctx.has_buffer and ctx.assets.buffer_dem_file:
         buffer_dem_file = str(ctx.assets.buffer_dem_file.relative_to(ctx.output_dir))
 
-    # Get processed user assets
     processed_objects = getattr(ctx, "processed_objects", None)
 
-    # Get HAMSTER data paths
     hamster_data_paths = getattr(ctx, "hamster_data_paths", None)
     if hamster_data_paths:
-        logging.info(f"Scene description found HAMSTER data paths: {hamster_data_paths}")
+        logging.info(
+            f"Scene description found HAMSTER data paths: {hamster_data_paths}"
+        )
     else:
         logging.info("Scene description: No HAMSTER data paths found in context")
 
-    # Get additional material libraries (if any)
     additional_material_libraries = getattr(ctx, "additional_material_libraries", None)
 
-    # Get tree instances (if any)
-    tree_instances = getattr(ctx, "tree_instances", None)
+    vegetation_instances = getattr(ctx, "vegetation_instances", None)
+    tree_collection_references = []
 
-    # Create scene description using existing function
+    if vegetation_instances:
+        logging.info(
+            f"Processing {len(vegetation_instances)} tree instances for hybrid scene format"
+        )
+
+        from .vegetation import save_tree_collection_binary
+
+        binary_filename = f"{ctx.scene_name}_trees.npy"
+        binary_path = ctx.output_dir / binary_filename
+
+        tree_metadata = save_tree_collection_binary(vegetation_instances, binary_path)
+
+        # Create reference entry for scene description
+        if tree_metadata["count"] > 0:
+            tree_collection_references.append(
+                {
+                    "type": "tree_collection",
+                    "name": "target_trees",
+                    "material": "forest_tree",
+                    "data_file": binary_filename,
+                    "count": tree_metadata["count"],
+                    "bounds": tree_metadata["bounds"],
+                    "file_size_bytes": tree_metadata["file_size_bytes"],
+                    "format": "numpy_structured_array",
+                    "dtype_info": tree_metadata["dtype_info"],
+                }
+            )
+
+        logging.info(
+            f"Saved tree data to binary format: {binary_path} ({tree_metadata['file_size_bytes']} bytes)"
+        )
+        vegetation_instances = None
+
     scene_description = create_s2gos_scene(
         scene_name=ctx.scene_name,
         mesh_path=mesh_path,
@@ -109,11 +132,16 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         dem_index_path=ctx.config.data_sources.dem_index_path,
         landcover_index_path=ctx.config.data_sources.landcover_index_path,
         material_config_path=ctx.config.data_sources.material_config_path,
+        # Use baresoil for tree areas - 3D trees handle the vegetation, surface should be soil
+        landcover_mapping_overrides={
+            "tree_cover": "baresoil",  # Surface under 3D trees
+            "shrubland": "baresoil",  # Surface under 3D shrubs
+        },
         atmosphere_config=ctx.config.atmosphere,
         hamster_data_paths=hamster_data_paths,
         processed_objects=processed_objects,
         additional_material_libraries=additional_material_libraries,
-        tree_instances=tree_instances,
+        tree_collection_references=tree_collection_references,
     )
 
     # Save scene description to file

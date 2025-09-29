@@ -18,18 +18,14 @@ def generate_target_mesh(ctx: SceneResourceContext) -> Optional[Path]:
         Path to the generated target mesh PLY file
     """
 
-    # Get DEM file path from dependency
     dem_file_path = ctx.dependency_outputs["target_dem"]
     if dem_file_path is None:
         raise ValueError("Target DEM file not found from dependencies")
 
-    # Initialize mesh generator
     mesh_generator = MeshGenerator()
 
-    # Generate output path
     mesh_path = ctx.meshes_dir / f"{ctx.scene_name}_terrain.ply"
 
-    # Generate mesh
     mesh = mesh_generator.generate_mesh_from_dem_file(
         dem_file_path=dem_file_path,
         output_path=mesh_path,
@@ -37,7 +33,6 @@ def generate_target_mesh(ctx: SceneResourceContext) -> Optional[Path]:
         handle_nans=ctx.config.processing.handle_dem_nans,
     )
 
-    # Store in assets
     ctx.assets.mesh_file = mesh_path
 
     logging.info(f"Target mesh: {mesh_path}")
@@ -58,13 +53,10 @@ def generate_buffer_mesh(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Buffer DEM file not found from dependencies")
         return None
 
-    # Initialize mesh generator
     mesh_generator = MeshGenerator()
 
-    # Generate output path
     mesh_path = ctx.meshes_dir / f"{ctx.scene_name}_buffer_terrain.ply"
 
-    # Generate buffer mesh
     mesh = mesh_generator.generate_mesh_from_dem_file(
         dem_file_path=buffer_dem_file_path,
         output_path=mesh_path,
@@ -72,7 +64,6 @@ def generate_buffer_mesh(ctx: SceneResourceContext) -> Optional[Path]:
         handle_nans=ctx.config.processing.handle_dem_nans,
     )
 
-    # Store in assets
     ctx.assets.buffer_mesh_file = mesh_path
 
     return mesh_path

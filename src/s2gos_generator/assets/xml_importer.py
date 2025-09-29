@@ -35,43 +35,46 @@ def import_xml_assets(
         - assets_list: List of asset dicts with string material references
         - material_library: Dict of {material_id: material_definition}
     """
-    # Validate input parameters
     if not isinstance(base_coordinate, (list, tuple)) or len(base_coordinate) != 2:
-        raise ValueError(f"base_coordinate must be a list/tuple of exactly 2 elements [longitude, latitude], got: {base_coordinate}")
-    
+        raise ValueError(
+            f"base_coordinate must be a list/tuple of exactly 2 elements [longitude, latitude], got: {base_coordinate}"
+        )
+
     try:
         float(base_coordinate[0])
         float(base_coordinate[1])
     except (ValueError, TypeError):
-        raise ValueError(f"base_coordinate values must be numeric, got: {base_coordinate}")
+        raise ValueError(
+            f"base_coordinate values must be numeric, got: {base_coordinate}"
+        )
 
     xml_data = _parse_xml(xml_path)
     material_library = _convert_materials(xml_data["materials"])
-    
+
     assets = []
-    
+
     for shape in xml_data["shapes"]:
         ply_filename = Path(shape["file"]).stem
-        
-        # Determine material (mappings override XML materials)
+
         material_ref = None
         if material_mappings:
             for pattern, mapped_material in material_mappings.items():
                 if _match_filename(ply_filename, pattern, pattern_type):
                     material_ref = mapped_material
                     break
-        
+
         if material_ref is None:
             original_material_id = shape["material"]
             if original_material_id in material_library:
                 material_ref = original_material_id
             else:
-                logging.warning(f"Material '{original_material_id}' not found for '{ply_filename}'. Using 'concrete' fallback.")
+                logging.warning(
+                    f"Material '{original_material_id}' not found for '{ply_filename}'. Using 'concrete' fallback."
+                )
                 material_ref = "concrete"
-        
-        # Apply transforms
+
         rotation_x = 90.0 if fix_blender_coords else 0.0
-        
+
         asset_data = {
             "object_id": f"{object_id_prefix}_{ply_filename}",
             "ply_path": shape["file"],
@@ -83,22 +86,26 @@ def import_xml_assets(
             "rotation_y": 0.0,
             "rotation_z": 0.0,
         }
-        
+
         assets.append(asset_data)
-    
+
     if validate_materials:
         _validate_assets(assets, material_library)
-    
+
     return assets, material_library
 
 
-def merge_material_libraries(*libraries: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def merge_material_libraries(
+    *libraries: Dict[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
     """Merge multiple material libraries, warning about conflicts."""
     merged = {}
     for i, library in enumerate(libraries):
         for mat_id, mat_def in library.items():
             if mat_id in merged:
-                logging.warning(f"Material '{mat_id}' conflict. Using definition from library {i + 1}.")
+                logging.warning(
+                    f"Material '{mat_id}' conflict. Using definition from library {i + 1}."
+                )
             merged[mat_id] = mat_def
     return merged
 
@@ -108,61 +115,58 @@ def _parse_xml(xml_path: str) -> Dict[str, Any]:
     xml_file = Path(xml_path)
     if not xml_file.exists():
         raise FileNotFoundError(f"XML file not found: {xml_path}")
-    
+
     tree = ET.parse(xml_path)
     xml_dir = xml_file.parent.resolve()
-    
-    # Extract materials
+
     materials = {}
     for bsdf in tree.findall(".//bsdf"):
         material_id = bsdf.get("id")
         if material_id:
             materials[material_id] = _parse_bsdf_element(bsdf)
-    
-    # Extract shapes
+
     shapes = []
     for shape in tree.findall('.//shape[@type="ply"]'):
         filename_elem = shape.find('./string[@name="filename"]')
         if filename_elem is not None:
             filename = filename_elem.get("value")
             material_ref = shape.find('./ref[@name="bsdf"]')
-            material_id = material_ref.get("id", "default-bsdf") if material_ref is not None else "default-bsdf"
-            shapes.append({
-                "file": str(xml_dir / filename),
-                "material": material_id
-            })
-    
+            material_id = (
+                material_ref.get("id", "default-bsdf")
+                if material_ref is not None
+                else "default-bsdf"
+            )
+            shapes.append({"file": str(xml_dir / filename), "material": material_id})
+
     return {"materials": materials, "shapes": shapes}
 
 
 def _parse_bsdf_element(bsdf_element) -> Dict[str, Any]:
     """Parse BSDF element to extract type and properties."""
-    mat_data = {
-        "type": bsdf_element.get("type", "diffuse"),
-        "properties": {}
-    }
-    
-    # Handle nested BSDF for twosided materials
+    mat_data = {"type": bsdf_element.get("type", "diffuse"), "properties": {}}
+
     if mat_data["type"] == "twosided":
         nested_bsdf = bsdf_element.find("./bsdf")
         if nested_bsdf is not None:
             nested_data = _parse_bsdf_element(nested_bsdf)
             mat_data["nested_type"] = nested_data["type"]
-            
-            # Check for property collisions and warn
-            overlapping_props = set(mat_data["properties"].keys()) & set(nested_data["properties"].keys())
+
+            overlapping_props = set(mat_data["properties"].keys()) & set(
+                nested_data["properties"].keys()
+            )
             if overlapping_props:
-                logging.warning(f"Twosided material property collision: {overlapping_props} - nested properties will override parent")
-            
+                logging.warning(
+                    f"Twosided material property collision: {overlapping_props} - nested properties will override parent"
+                )
+
             mat_data["properties"].update(nested_data["properties"])
-    
-    # Parse properties
+
     for child in bsdf_element:
         if child.tag in ["rgb", "spectrum", "float", "string", "integer", "boolean"]:
             name = child.get("name")
             if name:
                 mat_data["properties"][name] = _parse_property(child)
-    
+
     return mat_data
 
 
@@ -170,18 +174,18 @@ def _parse_property(element) -> Any:
     """Parse individual property element."""
     tag = element.tag
     value = element.get("value", "")
-    
+
     if tag == "rgb":
         try:
             rgb_values = [float(x) for x in value.split()]
             if len(rgb_values) == 3:
                 return rgb_values
             elif len(rgb_values) == 1:
-                # Single value - use for all channels
                 return [rgb_values[0]] * 3
             else:
-                # Wrong number of values
-                logging.warning(f"RGB value '{value}' has {len(rgb_values)} components, expected 3. Using default.")
+                logging.warning(
+                    f"RGB value '{value}' has {len(rgb_values)} components, expected 3. Using default."
+                )
                 return [0.5, 0.5, 0.5]
         except (ValueError, IndexError):
             return [0.5, 0.5, 0.5]
@@ -207,69 +211,77 @@ def _parse_property(element) -> Any:
             return float(value)
         except ValueError:
             return 0.5
-    
+
     return value
 
 
 def _convert_materials(mitsuba_materials: Dict[str, Dict]) -> Dict[str, Dict]:
     """Convert materials to S2GOS format using converter registry."""
     s2gos_materials = {}
-    
+
     for mat_id, mat_data in mitsuba_materials.items():
         try:
+            sanitized_mat_id = mat_id.replace(".", "_").replace("-", "_")
+
             mat_type = mat_data.get("type", "diffuse")
             nested_type = mat_data.get("nested_type")
-            
-            # Handle twosided by using nested type
+
             if mat_type == "twosided" and nested_type:
                 mat_type = nested_type
-            
-            # Get converter function
+
             converter = MATERIAL_CONVERTERS.get(mat_type, convert_diffuse)
-            s2gos_materials[mat_id] = converter(mat_data["properties"])
-            
+            s2gos_materials[sanitized_mat_id] = converter(mat_data["properties"])
+
         except Exception as e:
-            logging.warning(f"Failed to convert material '{mat_id}': {e}. Using diffuse fallback.")
-            s2gos_materials[mat_id] = convert_diffuse({})
-    
+            logging.warning(
+                f"Failed to convert material '{mat_id}': {e}. Using diffuse fallback."
+            )
+            sanitized_mat_id = mat_id.replace(".", "_").replace("-", "_")
+            s2gos_materials[sanitized_mat_id] = convert_diffuse({})
+
     return s2gos_materials
 
-
-# Material Converter Functions
 
 def convert_diffuse(props: Dict[str, Any]) -> Dict[str, Any]:
     """Convert diffuse material."""
     reflectance = props.get("reflectance", [0.5, 0.5, 0.5])
     if isinstance(reflectance, dict) and "file" in reflectance:
-        reflectance_spec = {"path": f"spectra/{reflectance['file']}", "variable": "reflectance"}
+        reflectance_spec = {
+            "path": f"spectra/{reflectance['file']}",
+            "variable": "reflectance",
+        }
     elif isinstance(reflectance, (list, tuple)):
         reflectance_spec = {"type": "uniform", "value": list(reflectance)}
     elif isinstance(reflectance, (int, float)):
         reflectance_spec = {"type": "uniform", "value": float(reflectance)}
     else:
         reflectance_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
-    
     return {"type": "diffuse", "reflectance": reflectance_spec}
 
 
 def convert_conductor(props: Dict[str, Any]) -> Dict[str, Any]:
     """Convert conductor material."""
     result = {"type": "conductor"}
-    
+
     material_preset = props.get("material")
     if material_preset:
         result["material"] = material_preset
     else:
         result["material"] = "Cu"  # Default copper
-    
-    # Add specular reflectance if present
+
     spec_refl = props.get("specular_reflectance")
     if spec_refl is not None:
         if isinstance(spec_refl, (list, tuple)):
-            result["specular_reflectance"] = {"type": "uniform", "value": list(spec_refl)}
+            result["specular_reflectance"] = {
+                "type": "uniform",
+                "value": list(spec_refl),
+            }
         elif isinstance(spec_refl, (int, float)):
-            result["specular_reflectance"] = {"type": "uniform", "value": float(spec_refl)}
-    
+            result["specular_reflectance"] = {
+                "type": "uniform",
+                "value": float(spec_refl),
+            }
+
     return result
 
 
@@ -278,8 +290,7 @@ def convert_roughconductor(props: Dict[str, Any]) -> Dict[str, Any]:
     result = convert_conductor(props)
     result["type"] = "rough_conductor"
     result["distribution"] = props.get("distribution", "ggx")
-    
-    # Handle roughness
+
     alpha_u = props.get("alpha_u")
     alpha_v = props.get("alpha_v")
     if alpha_u is not None or alpha_v is not None:
@@ -290,7 +301,7 @@ def convert_roughconductor(props: Dict[str, Any]) -> Dict[str, Any]:
     else:
         alpha = props.get("alpha", props.get("roughness", 0.1))
         result["roughness"] = float(alpha)
-    
+
     return result
 
 
@@ -301,8 +312,7 @@ def convert_dielectric(props: Dict[str, Any]) -> Dict[str, Any]:
         "int_ior": float(props.get("int_ior", 1.5)),
         "ext_ior": float(props.get("ext_ior", 1.0)),
     }
-    
-    # Add optional properties
+
     for prop_name in ["specular_reflectance", "specular_transmittance"]:
         prop_val = props.get(prop_name)
         if prop_val is not None:
@@ -310,21 +320,21 @@ def convert_dielectric(props: Dict[str, Any]) -> Dict[str, Any]:
                 result[prop_name] = {"type": "uniform", "value": list(prop_val)}
             elif isinstance(prop_val, (int, float)):
                 result[prop_name] = {"type": "uniform", "value": float(prop_val)}
-    
+
     return result
 
 
 def convert_plastic(props: Dict[str, Any]) -> Dict[str, Any]:
     """Convert plastic material."""
     diffuse_refl = props.get("diffuse_reflectance", [0.5, 0.5, 0.5])
-    
+
     if isinstance(diffuse_refl, (int, float)):
         diffuse_spec = {"type": "uniform", "value": float(diffuse_refl)}
     elif isinstance(diffuse_refl, (list, tuple)):
         diffuse_spec = {"type": "uniform", "value": list(diffuse_refl)}
     else:
         diffuse_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
-    
+
     return {
         "type": "plastic",
         "diffuse_reflectance": diffuse_spec,
@@ -335,17 +345,39 @@ def convert_plastic(props: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-# Eradiate BSDF Converters
-
 def convert_bilambertian(props: Dict[str, Any]) -> Dict[str, Any]:
     """Convert bi-lambertian (two-sided diffuse) material."""
     reflectance = props.get("reflectance", [0.5, 0.5, 0.5])
     transmittance = props.get("transmittance", [0.0, 0.0, 0.0])
-    
+
+    if isinstance(reflectance, dict) and "file" in reflectance:
+        reflectance_spec = {
+            "path": f"spectra/{reflectance['file']}",
+            "variable": "reflectance",
+        }
+    elif isinstance(reflectance, (list, tuple)):
+        reflectance_spec = {"type": "uniform", "value": list(reflectance)}
+    elif isinstance(reflectance, (int, float)):
+        reflectance_spec = {"type": "uniform", "value": float(reflectance)}
+    else:
+        reflectance_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
+
+    if isinstance(transmittance, dict) and "file" in transmittance:
+        transmittance_spec = {
+            "path": f"spectra/{transmittance['file']}",
+            "variable": "transmittance",
+        }
+    elif isinstance(transmittance, (list, tuple)):
+        transmittance_spec = {"type": "uniform", "value": list(transmittance)}
+    elif isinstance(transmittance, (int, float)):
+        transmittance_spec = {"type": "uniform", "value": float(transmittance)}
+    else:
+        transmittance_spec = {"type": "uniform", "value": [0.0, 0.0, 0.0]}
+
     return {
         "type": "bilambertian",
-        "reflectance": {"type": "uniform", "value": _ensure_list(reflectance)},
-        "transmittance": {"type": "uniform", "value": _ensure_list(transmittance)},
+        "reflectance": reflectance_spec,
+        "transmittance": transmittance_spec,
     }
 
 
@@ -431,15 +463,12 @@ def convert_measured(props: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-# Material Converter Registry
 MATERIAL_CONVERTERS = {
-    # Mitsuba BSDFs
     "diffuse": convert_diffuse,
     "conductor": convert_conductor,
     "roughconductor": convert_roughconductor,
     "dielectric": convert_dielectric,
     "plastic": convert_plastic,
-    # Eradiate BSDFs  
     "bilambertian": convert_bilambertian,
     "rpv": convert_rpv,
     "rtls": convert_rtls,
@@ -462,7 +491,9 @@ def _ensure_list(value: Any) -> List[float]:
         return [0.5, 0.5, 0.5]
 
 
-def _match_filename(filename: str, pattern: str, pattern_type: str = "wildcard") -> bool:
+def _match_filename(
+    filename: str, pattern: str, pattern_type: str = "wildcard"
+) -> bool:
     """Check if filename matches pattern using specified matching strategy.
 
     Args:
@@ -483,82 +514,77 @@ def _match_filename(filename: str, pattern: str, pattern_type: str = "wildcard")
         raise ValueError(f"Unknown pattern_type: {pattern_type}")
 
 
-def create_tree_shapegroup(tree_xml_path: str, output_dir: Optional["UPath"] = None) -> Dict[str, Any]:
+def create_tree_shapegroup(
+    tree_xml_path: str, output_dir: Optional["UPath"] = None
+) -> Dict[str, Any]:
     """Create Mitsuba shapegroup from tree XML file.
-    
+
     Args:
         tree_xml_path: Path to tree XML file
         output_dir: Scene output directory where mesh files will be copied
-        
+
     Returns:
         Dictionary containing shapegroup definition for Mitsuba scene
     """
-    # Parse the tree XML to extract shapes and materials
     xml_data = _parse_xml(tree_xml_path)
     materials = _convert_materials(xml_data["materials"])
-    
-    # Create shapegroup containing all tree components
-    shapegroup = {
-        "type": "shapegroup",
-        "id": "tree_group"
-    }
-    
-    # Setup output directory for tree meshes if provided
+
+    shapegroup = {"type": "shapegroup", "id": "tree_group"}
+
     if output_dir:
         from upath import UPath
+
         tree_meshes_dir = UPath(output_dir) / "meshes" / "tree"
         tree_meshes_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Add each PLY shape to the shapegroup
+
     for i, shape in enumerate(xml_data["shapes"]):
         shape_name = f"tree_component_{i}"
-        
+
         # Get material reference - use proper reference format
-        material_id = shape["material"]
-        
-        # Handle file path - copy to output directory if provided
+        # Sanitize material ID to match the sanitized IDs from _convert_materials
+        material_id = shape["material"].replace(".", "_").replace("-", "_")
+
         source_file_path = Path(shape["file"])
-        
+
         if output_dir and source_file_path.exists():
-            # Copy mesh file to scene output directory
             dest_filename = source_file_path.name
             dest_path = tree_meshes_dir / dest_filename
-            
-            # Only copy if destination doesn't exist or is different
+
             if not dest_path.exists():
                 shutil.copy2(source_file_path, dest_path)
                 logging.info(f"Copied tree mesh: {dest_filename}")
-            
-            # Use relative path from scene root
+
             mesh_filename = f"meshes/tree/{dest_filename}"
         else:
-            # Fallback to original path (absolute)
             mesh_filename = str(source_file_path)
             if output_dir and not source_file_path.exists():
                 logging.warning(f"Tree mesh file not found: {source_file_path}")
-        
+
         shapegroup[shape_name] = {
             "type": "ply",
             "filename": mesh_filename,
             "face_normals": True,
-            "bsdf": {"type": "ref", "id": material_id}
+            "bsdf": {"type": "ref", "id": f"_mat_{material_id}"},
         }
-    
+
     return shapegroup, materials
 
 
-def _validate_assets(assets: List[Dict[str, Any]], material_library: Dict[str, Dict[str, Any]]) -> None:
+def _validate_assets(
+    assets: List[Dict[str, Any]], material_library: Dict[str, Dict[str, Any]]
+) -> None:
     """Validate asset material references and PLY file existence."""
     errors = []
-    
+
     for asset in assets:
         asset_id = asset["object_id"]
-        
+
         # Note: Material references may be external (from scene library) so we don't validate them here
-        # Only validate PLY file existence
         ply_path = Path(asset["ply_path"])
         if not ply_path.exists():
             errors.append(f"Asset '{asset_id}': PLY file not found: {ply_path}")
-    
+
     if errors:
-        raise ValueError("Asset validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
+        raise ValueError(
+            "Asset validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+        )

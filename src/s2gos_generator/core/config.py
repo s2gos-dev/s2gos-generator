@@ -384,8 +384,8 @@ class UserAssets(BaseModel):
     rotation_y: float = Field(0.0, description="Rotation around Y-axis in degrees")
     rotation_z: float = Field(0.0, description="Rotation around Z-axis in degrees")
     face_normals: Optional[bool] = Field(
-        None, 
-        description="Mitsuba PLY face normals setting: True=smooth normals, False=per-face normals, None=use PLY file defaults"
+        None,
+        description="Mitsuba PLY face normals setting: True=smooth normals, False=per-face normals, None=use PLY file defaults",
     )
 
     @field_validator("coordinate")
@@ -508,6 +508,103 @@ class XmlSceneConfig(BaseModel):
     }
 
 
+class VegetationSpecies(BaseModel):
+    """Configuration for a single vegetation species."""
+
+    name: str = Field(
+        description="Species identifier (e.g., 'oak_trees', 'berry_bushes')"
+    )
+    asset_xml_path: str = Field(description="Path to XML asset file")
+    density_per_hectare: float = Field(
+        ge=0.0, le=4000.0, description="Density for this species"
+    )
+    scale_min: float = Field(ge=0.1, description="Minimum scale factor")
+    scale_max: float = Field(ge=0.1, description="Maximum scale factor")
+    spillover_enabled: bool = Field(
+        True, description="Allow spillover for this species"
+    )
+    spillover_compatibility: Dict[int, float] = Field(
+        default_factory=dict,
+        description="Species-specific spillover rules (overrides global if specified)",
+    )
+
+    @field_validator("scale_max")
+    @classmethod
+    def validate_scale_range(cls, v, info):
+        """Ensure scale_max > scale_min."""
+        if "scale_min" in info.data and v <= info.data["scale_min"]:
+            raise ValueError("scale_max must be greater than scale_min")
+        return v
+
+    model_config = {
+        "validate_assignment": True,
+        "extra": "forbid",
+    }
+
+
+class VegetationPlacementConfig(BaseModel):
+    """Configuration for multi-species vegetation placement system."""
+
+    enabled: bool = Field(
+        True, description="Enable vegetation placement based on landcover data"
+    )
+
+    landcover_species_mapping: Dict[int, List[VegetationSpecies]] = Field(
+        default_factory=lambda: {
+            10: [
+                VegetationSpecies(
+                    name="oak_trees",
+                    asset_xml_path="tree.xml",
+                    density_per_hectare=400.0,
+                    scale_min=10.0,
+                    scale_max=35.0,
+                )
+            ]
+        },
+        description="Mapping from landcover class to list of vegetation species",
+    )
+
+    min_spacing: float = Field(
+        2.0,
+        ge=0.1,
+        description="Global minimum spacing between any vegetation instances",
+    )
+    density_variation: float = Field(
+        0.3, ge=0.0, le=1.0, description="Random variation in density (±30% by default)"
+    )
+    max_instances_per_pixel: int = Field(
+        50, ge=1, le=10000, description="Performance limit per pixel across all species"
+    )
+    rotation_range: float = Field(
+        180.0,
+        ge=0.0,
+        le=360.0,
+        description="Random rotation range in degrees for all species",
+    )
+
+    spillover_max_distance: float = Field(
+        30.0,
+        ge=0.0,
+        le=300.0,
+        description="Global maximum spillover distance in meters",
+    )
+    global_spillover_compatibility: Dict[int, float] = Field(
+        default_factory=lambda: {
+            20: 0.8,  # Shrubland - high compatibility
+            30: 0.8,  # Grassland - high compatibility
+            40: 0.4,  # Cropland - medium compatibility
+            90: 0.4,  # Herbaceous Wetland - medium compatibility
+            60: 0.1,  # Bare/sparse vegetation - low compatibility
+        },
+        description="Default spillover compatibility (can be overridden per species)",
+    )
+
+    model_config = {
+        "validate_assignment": True,
+        "extra": "forbid",
+    }
+
+
 class SceneGenConfig(BaseModel):
     """
     Comprehensive scene configuration using Pydantic.
@@ -534,14 +631,24 @@ class SceneGenConfig(BaseModel):
         description="Atmosphere configuration",
     )
     enable_buffer: bool = Field(False, description="Enable buffer area processing")
-    enable_background: bool = Field(False, description="Enable background area processing")
-    
+    enable_background: bool = Field(
+        False, description="Enable background area processing"
+    )
+
     buffer_size_km: float = Field(60.0, gt=0.0, description="Buffer size in kilometers")
-    buffer_resolution_m: float = Field(100.0, gt=0.0, description="Buffer resolution in meters")
-    
-    background_size_km: float = Field(200.0, gt=0.0, description="Background area size in kilometers")
-    background_resolution_m: float = Field(200.0, gt=0.0, description="Background resolution in meters")
-    background_elevation: float = Field(0.0, description="Background elevation in meters")
+    buffer_resolution_m: float = Field(
+        100.0, gt=0.0, description="Buffer resolution in meters"
+    )
+
+    background_size_km: float = Field(
+        200.0, gt=0.0, description="Background area size in kilometers"
+    )
+    background_resolution_m: float = Field(
+        200.0, gt=0.0, description="Background resolution in meters"
+    )
+    background_elevation: float = Field(
+        0.0, description="Background elevation in meters"
+    )
     hamster: Optional[HamsterConfig] = Field(
         None, description="HAMSTER albedo data configuration for baresoil"
     )
@@ -551,8 +658,9 @@ class SceneGenConfig(BaseModel):
     xml_scenes: list[XmlSceneConfig] = Field(
         [], description="XML scene files to import for additional assets and materials"
     )
-    trees_enabled: bool = Field(
-        False, description="Enable tree placement based on landcover data"
+    vegetation_placement: Optional[VegetationPlacementConfig] = Field(
+        None,
+        description="Vegetation placement configuration (None disables vegetation)",
     )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"
@@ -584,6 +692,13 @@ class SceneGenConfig(BaseModel):
 
         return self
 
+    @property
+    def trees_enabled(self) -> bool:
+        """Backward compatibility property for trees_enabled check."""
+        return (
+            self.vegetation_placement is not None and self.vegetation_placement.enabled
+        )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return self.model_dump()
@@ -602,13 +717,22 @@ class SceneGenConfig(BaseModel):
         with open_file(path, "r") as f:
             data = json.load(f)
 
+        if "output_dir" in data and isinstance(data["output_dir"], str):
+            data["output_dir"] = UPath(data["output_dir"])
+
+        if (
+            "hamster" in data
+            and "data_path" in data["hamster"]
+            and isinstance(data["hamster"]["data_path"], str)
+        ):
+            data["hamster"]["data_path"] = UPath(data["hamster"]["data_path"])
+
         # Simple version validation only
         validate_config_version(
             "scene_config", data, get_version(), "scene generation configuration"
         )
 
         return cls(**data)
-
 
     def enable_hamster_albedo(
         self,
@@ -743,7 +867,6 @@ def create_scene_config(
         atmosphere: Optional atmosphere configuration
         **kwargs: Additional configuration options
     """
-    # Create data sources with resolver-powered elegance
     data_sources = DataSources(**(data_overrides or {}))
 
     return SceneGenConfig(

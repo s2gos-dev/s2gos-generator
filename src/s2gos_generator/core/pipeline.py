@@ -71,10 +71,10 @@ class SceneGenerationPipeline:
             generate_buffer_texture,
             generate_target_texture,
         )
-        from ..resources.trees import process_target_trees
+        from ..resources.vegetation import process_target_vegetation
 
         # Register resources with their dependencies
-        
+
         # Core resources - always included
         self.registry.register("aoi", [], generate_aoi)
         self.registry.register("target_dem", ["aoi"], process_target_dem)
@@ -87,19 +87,29 @@ class SceneGenerationPipeline:
         if self.config.enable_buffer:
             self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
             self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
-            self.registry.register("buffer_landcover", ["buffer_aoi"], process_buffer_landcover)
+            self.registry.register(
+                "buffer_landcover", ["buffer_aoi"], process_buffer_landcover
+            )
             self.registry.register("buffer_mesh", ["buffer_dem"], generate_buffer_mesh)
-            self.registry.register("buffer_texture", ["buffer_landcover"], generate_buffer_texture)
+            self.registry.register(
+                "buffer_texture", ["buffer_landcover"], generate_buffer_texture
+            )
 
         if self.config.enable_background:
             self.registry.register("background_aoi", ["aoi"], generate_background_aoi)
-            self.registry.register("background_landcover", ["background_aoi"], process_background_landcover)
-            self.registry.register("background_texture", ["background_landcover"], generate_background_texture)
+            self.registry.register(
+                "background_landcover", ["background_aoi"], process_background_landcover
+            )
+            self.registry.register(
+                "background_texture",
+                ["background_landcover"],
+                generate_background_texture,
+            )
 
         # Optional resources
         if self.config.user_assets:
             self.registry.register("user_assets", ["target_dem"], process_user_assets)
-            
+
         if self.config.hamster and self.config.hamster.enabled:
             # HAMSTER adapts to what was registered
             hamster_deps = ["aoi"]
@@ -108,9 +118,13 @@ class SceneGenerationPipeline:
             if "background_aoi" in self.registry.resources:
                 hamster_deps.append("background_aoi")
             self.registry.register("hamster_data", hamster_deps, process_hamster_data)
-            
+
         if self.config.trees_enabled:
-            self.registry.register("target_trees", ["target_landcover", "target_dem"], process_target_trees)
+            self.registry.register(
+                "target_trees",
+                ["target_landcover", "target_dem"],
+                process_target_vegetation,
+            )
 
         # Scene description (dependencies will be updated by update_scene_dependencies)
         self.registry.register(
@@ -186,15 +200,21 @@ class SceneGenerationPipeline:
 
         total_resources = len(self.registry.resources)
         logging.info(f"Registered {total_resources} resources:")
-        
+
         if core_resources:
             logging.info(f"  Core ({len(core_resources)}): {', '.join(core_resources)}")
         if buffer_resources:
-            logging.info(f"  Buffer ({len(buffer_resources)}): {', '.join(buffer_resources)}")
+            logging.info(
+                f"  Buffer ({len(buffer_resources)}): {', '.join(buffer_resources)}"
+            )
         if background_resources:
-            logging.info(f"  Background ({len(background_resources)}): {', '.join(background_resources)}")
+            logging.info(
+                f"  Background ({len(background_resources)}): {', '.join(background_resources)}"
+            )
         if optional_resources:
-            logging.info(f"  Optional ({len(optional_resources)}): {', '.join(optional_resources)}")
+            logging.info(
+                f"  Optional ({len(optional_resources)}): {', '.join(optional_resources)}"
+            )
 
     def run_full_pipeline(self) -> SceneDescription:
         """Execute the complete scene generation pipeline.

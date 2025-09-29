@@ -86,28 +86,44 @@ class LandCoverProcessor(BaseTileProcessor):
         self,
         aoi_polygon: Polygon,
         output_path: UPath,
-        target_resolution_m: Optional[float] = None,
+        target_resolution_m: float = 10.0,
         center_lat: Optional[float] = None,
         center_lon: Optional[float] = None,
         aoi_size_km: Optional[float] = None,
     ) -> xr.Dataset:
-        """Generate landcover data for the AOI."""
+        """Generate landcover data for the AOI with configurable resolution.
+
+        Args:
+            aoi_polygon: Area of interest polygon
+            output_path: Path where to save the processed landcover data
+            target_resolution_m: Target resolution in meters (default: 10.0 for native WorldCover)
+            center_lat: Center latitude for projection (required for non-native resolution)
+            center_lon: Center longitude for projection (required for non-native resolution)
+            aoi_size_km: Size of the AOI in kilometers (required for non-native resolution)
+
+        Returns:
+            Processed landcover dataset
+        """
         tile_paths = self._find_intersecting_tiles(aoi_polygon)
 
         # Pass AOI to merge for early spatial filtering
         merged_landcover = self._merge_tiles(tile_paths, aoi_polygon)
+        merged_landcover = merged_landcover.persist()
 
-        if target_resolution_m is not None:
-            merged_landcover = merged_landcover.persist()
-
+        # Clip to exact AOI geometry
         clipped_landcover = self._clip_to_aoi(merged_landcover, aoi_polygon)
 
-        if (
-            target_resolution_m is not None
-            and center_lat is not None
+        # Apply regridding if resolution differs from native (10m) or projection is requested
+        if target_resolution_m != 10.0 or (
+            center_lat is not None
             and center_lon is not None
             and aoi_size_km is not None
         ):
+            if center_lat is None or center_lon is None or aoi_size_km is None:
+                raise ValueError(
+                    "center_lat, center_lon, and aoi_size_km are required for regridding operations"
+                )
+
             clipped_landcover = self._regrid_data(
                 clipped_landcover,
                 target_resolution_m,

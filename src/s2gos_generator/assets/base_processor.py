@@ -19,14 +19,15 @@ from .datautil import regrid_to_projection
 # Configure PROJ environment to fix "Cannot find proj.db" warnings
 try:
     import pyproj
+
     # Set PROJ_DATA to the correct location for this environment
     proj_data_dir = pyproj.datadir.get_data_dir()
-    os.environ['PROJ_DATA'] = proj_data_dir
-    
+    os.environ["PROJ_DATA"] = proj_data_dir
+
     # Clear any conflicting PROJ_LIB environment variable
-    if 'PROJ_LIB' in os.environ:
-        del os.environ['PROJ_LIB']
-        
+    if "PROJ_LIB" in os.environ:
+        del os.environ["PROJ_LIB"]
+
     logging.debug(f"PROJ environment configured: PROJ_DATA={proj_data_dir}")
 except ImportError:
     logging.warning("pyproj not available, PROJ environment not configured")

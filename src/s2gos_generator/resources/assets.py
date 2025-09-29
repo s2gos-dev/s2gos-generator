@@ -18,22 +18,18 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
         Path to the objects directory containing processed assets
     """
 
-    # Import coordinate transformation system
     from s2gos_utils.coordinates import CoordinateSystem
     from s2gos_utils.io.paths import mkdir
 
     processed_objects = []
 
-    # Create objects directory
     objects_dir = ctx.output_dir / "objects"
     mkdir(objects_dir)
 
-    # Get target DEM file for elevation queries
     target_dem_path = ctx.dependency_outputs["target_dem"]
     if target_dem_path is None:
         raise RuntimeError("Target DEM data not available for elevation querying")
 
-    # Create coordinate system once for all assets (performance optimization)
     coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
     logging.info("Using cached CoordinateSystem for asset placement")
 
@@ -41,7 +37,7 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
         try:
             # Convert lat/lon to scene coordinates
             lon, lat = asset.coordinate
-            
+
             # Use cached coordinate system
             scene_x, scene_y = coords.latlon_to_scene(lat, lon)
 
@@ -66,7 +62,7 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
 
             if asset.material:
                 object_data["material"] = asset.material
-            
+
             if asset.face_normals is not None:
                 object_data["face_normals"] = asset.face_normals
 

@@ -121,7 +121,7 @@ class SceneGenerationPipeline:
 
         if self.config.trees_enabled:
             self.registry.register(
-                "target_trees",
+                "target_vegetation",
                 ["target_landcover", "target_dem"],
                 process_target_vegetation,
             )

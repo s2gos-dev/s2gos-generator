@@ -76,38 +76,40 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
     additional_material_libraries = getattr(ctx, "additional_material_libraries", None)
 
     vegetation_instances = getattr(ctx, "vegetation_instances", None)
-    tree_collection_references = []
+    vegetation_collection_references = []
 
     if vegetation_instances:
         logging.info(
-            f"Processing {len(vegetation_instances)} tree instances for hybrid scene format"
+            f"Processing {len(vegetation_instances)} vegetation instances for hybrid scene format"
         )
 
-        from .vegetation import save_tree_collection_binary
+        from .vegetation import save_vegetation_collection_binary
 
-        binary_filename = f"{ctx.scene_name}_trees.npy"
+        binary_filename = f"{ctx.scene_name}_vegetation.npy"
         binary_path = ctx.output_dir / binary_filename
 
-        tree_metadata = save_tree_collection_binary(vegetation_instances, binary_path)
+        vegetation_metadata = save_vegetation_collection_binary(
+            vegetation_instances, binary_path
+        )
 
         # Create reference entry for scene description
-        if tree_metadata["count"] > 0:
-            tree_collection_references.append(
+        if vegetation_metadata["count"] > 0:
+            vegetation_collection_references.append(
                 {
-                    "type": "tree_collection",
-                    "name": "target_trees",
+                    "type": "vegetation_collection",
+                    "name": "target_vegetation",
                     "material": "forest_tree",
                     "data_file": binary_filename,
-                    "count": tree_metadata["count"],
-                    "bounds": tree_metadata["bounds"],
-                    "file_size_bytes": tree_metadata["file_size_bytes"],
+                    "count": vegetation_metadata["count"],
+                    "bounds": vegetation_metadata["bounds"],
+                    "file_size_bytes": vegetation_metadata["file_size_bytes"],
                     "format": "numpy_structured_array",
-                    "dtype_info": tree_metadata["dtype_info"],
+                    "dtype_info": vegetation_metadata["dtype_info"],
                 }
             )
 
         logging.info(
-            f"Saved tree data to binary format: {binary_path} ({tree_metadata['file_size_bytes']} bytes)"
+            f"Saved vegetation data to binary format: {binary_path} ({vegetation_metadata['file_size_bytes']} bytes)"
         )
         vegetation_instances = None
 
@@ -141,7 +143,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         hamster_data_paths=hamster_data_paths,
         processed_objects=processed_objects,
         additional_material_libraries=additional_material_libraries,
-        tree_collection_references=tree_collection_references,
+        vegetation_collection_references=vegetation_collection_references,
     )
 
     # Save scene description to file

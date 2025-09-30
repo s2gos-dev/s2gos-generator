@@ -509,7 +509,11 @@ class XmlSceneConfig(BaseModel):
 
 
 class VegetationSpecies(BaseModel):
-    """Configuration for a single vegetation species."""
+    """Configuration for a single vegetation species.
+
+    Defines placement parameters for a vegetation type (e.g., oak trees, shrubs).
+    Multiple species can be assigned to the same landcover class for mixed vegetation.
+    """
 
     name: str = Field(
         description="Species identifier (e.g., 'oak_trees', 'berry_bushes')"
@@ -521,11 +525,11 @@ class VegetationSpecies(BaseModel):
     scale_min: float = Field(ge=0.1, description="Minimum scale factor")
     scale_max: float = Field(ge=0.1, description="Maximum scale factor")
     spillover_enabled: bool = Field(
-        True, description="Allow spillover for this species"
+        False, description="Enable spillover into adjacent compatible landcover classes"
     )
-    spillover_compatibility: Dict[int, float] = Field(
-        default_factory=dict,
-        description="Species-specific spillover rules (overrides global if specified)",
+    spillover_compatibility: Optional[Dict[int, float]] = Field(
+        None,
+        description="Per-species spillover compatibility map (overrides global). Maps landcover class to probability 0.0-1.0",
     )
 
     @field_validator("scale_max")
@@ -543,7 +547,26 @@ class VegetationSpecies(BaseModel):
 
 
 class VegetationPlacementConfig(BaseModel):
-    """Configuration for multi-species vegetation placement system."""
+    """Configuration for multi-species vegetation placement system.
+
+    Controls how vegetation instances are distributed across the scene based on
+    landcover classifications. Supports multiple species per landcover class.
+
+    Configuration levels:
+    - Per-species parameters: density, scale, asset (in VegetationSpecies)
+    - Global parameters: spacing, variation, limits (this class)
+
+    Example:
+        config = VegetationPlacementConfig(
+            enabled=True,
+            landcover_species_mapping={
+                10: [VegetationSpecies(name="oak", asset_xml_path="oak.xml", ...)],
+                20: [VegetationSpecies(name="shrub", asset_xml_path="shrub.xml", ...)]
+            },
+            min_spacing=2.0,
+            density_variation=0.3
+        )
+    """
 
     enabled: bool = Field(
         True, description="Enable vegetation placement based on landcover data"
@@ -567,7 +590,7 @@ class VegetationPlacementConfig(BaseModel):
     min_spacing: float = Field(
         2.0,
         ge=0.1,
-        description="Global minimum spacing between any vegetation instances",
+        description="Global minimum spacing between any vegetation instances (meters)",
     )
     density_variation: float = Field(
         0.3, ge=0.0, le=1.0, description="Random variation in density (±30% by default)"
@@ -581,22 +604,21 @@ class VegetationPlacementConfig(BaseModel):
         le=360.0,
         description="Random rotation range in degrees for all species",
     )
-
-    spillover_max_distance: float = Field(
+    spillover_max_distance_m: float = Field(
         30.0,
         ge=0.0,
         le=300.0,
-        description="Global maximum spillover distance in meters",
+        description="Maximum distance (meters) for spillover from primary landcover class",
     )
-    global_spillover_compatibility: Dict[int, float] = Field(
+    spillover_compatibility: Dict[int, float] = Field(
         default_factory=lambda: {
             20: 0.8,  # Shrubland - high compatibility
-            30: 0.8,  # Grassland - high compatibility
-            40: 0.4,  # Cropland - medium compatibility
-            90: 0.4,  # Herbaceous Wetland - medium compatibility
-            60: 0.1,  # Bare/sparse vegetation - low compatibility
+            30: 0.7,  # Grassland - moderate compatibility
+            40: 0.3,  # Cropland - low compatibility
+            90: 0.4,  # Herbaceous Wetland - moderate compatibility
+            60: 0.1,  # Bare/sparse vegetation - very low compatibility
         },
-        description="Default spillover compatibility (can be overridden per species)",
+        description="Default spillover compatibility map. Maps landcover class to probability 0.0-1.0. Can be overridden per species.",
     )
 
     model_config = {

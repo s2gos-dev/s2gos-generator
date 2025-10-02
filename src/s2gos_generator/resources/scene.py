@@ -85,32 +85,48 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
 
         from .vegetation import save_vegetation_collection_binary
 
-        binary_filename = f"{ctx.scene_name}_vegetation.npy"
-        binary_path = ctx.output_dir / binary_filename
+        species_groups = {}
+        for instance in vegetation_instances:
+            species_name = instance.get("species", "unknown")
+            asset_xml = instance.get("asset_xml", "tree.xml")
+            key = (species_name, asset_xml)
 
-        vegetation_metadata = save_vegetation_collection_binary(
-            vegetation_instances, binary_path
-        )
+            if key not in species_groups:
+                species_groups[key] = []
+            species_groups[key].append(instance)
 
-        # Create reference entry for scene description
-        if vegetation_metadata["count"] > 0:
-            vegetation_collection_references.append(
-                {
-                    "type": "vegetation_collection",
-                    "name": "target_vegetation",
-                    "material": "forest_tree",
-                    "data_file": binary_filename,
-                    "count": vegetation_metadata["count"],
-                    "bounds": vegetation_metadata["bounds"],
-                    "file_size_bytes": vegetation_metadata["file_size_bytes"],
-                    "format": "numpy_structured_array",
-                    "dtype_info": vegetation_metadata["dtype_info"],
-                }
+        logging.info(f"Found {len(species_groups)} distinct species groups")
+
+        for (species_name, asset_xml), instances in species_groups.items():
+            asset_basename = Path(asset_xml).stem  # Extract filename without extension
+            binary_filename = f"{ctx.scene_name}_{species_name}_{asset_basename}.npy"
+            binary_path = ctx.output_dir / binary_filename
+
+            vegetation_metadata = save_vegetation_collection_binary(
+                instances, binary_path
             )
 
-        logging.info(
-            f"Saved vegetation data to binary format: {binary_path} ({vegetation_metadata['file_size_bytes']} bytes)"
-        )
+            if vegetation_metadata["count"] > 0:
+                vegetation_collection_references.append(
+                    {
+                        "type": "vegetation_collection",
+                        "name": species_name,
+                        "material": "forest_tree",
+                        "data_file": binary_filename,
+                        "model_file": asset_xml,
+                        "count": vegetation_metadata["count"],
+                        "bounds": vegetation_metadata["bounds"],
+                        "file_size_bytes": vegetation_metadata["file_size_bytes"],
+                        "format": "numpy_structured_array",
+                        "dtype_info": vegetation_metadata["dtype_info"],
+                    }
+                )
+
+                logging.info(
+                    f"Saved {species_name} vegetation: {vegetation_metadata['count']} instances "
+                    f"({vegetation_metadata['file_size_bytes']} bytes) → {binary_filename}"
+                )
+
         vegetation_instances = None
 
     scene_description = create_s2gos_scene(

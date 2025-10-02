@@ -518,7 +518,9 @@ class VegetationSpecies(BaseModel):
     name: str = Field(
         description="Species identifier (e.g., 'oak_trees', 'berry_bushes')"
     )
-    asset_xml_path: str = Field(description="Path to XML asset file")
+    asset_xml_paths: Union[List[str], Dict[str, float]] = Field(
+        description="Asset XML file path(s). Use list for uniform distribution or dict for weighted distribution"
+    )
     density_per_hectare: float = Field(
         ge=0.0, le=4000.0, description="Density for this species"
     )
@@ -539,6 +541,34 @@ class VegetationSpecies(BaseModel):
         if "scale_min" in info.data and v <= info.data["scale_min"]:
             raise ValueError("scale_max must be greater than scale_min")
         return v
+
+    @field_validator("asset_xml_paths")
+    @classmethod
+    def validate_asset_paths(cls, v):
+        """Validate asset paths and weights."""
+        if isinstance(v, list):
+            if len(v) == 0:
+                raise ValueError("asset_xml_paths list cannot be empty")
+        elif isinstance(v, dict):
+            if len(v) == 0:
+                raise ValueError("asset_xml_paths dict cannot be empty")
+            for path, weight in v.items():
+                if weight <= 0:
+                    raise ValueError(f"Weight must be positive for {path}: {weight}")
+        return v
+
+    def get_asset_paths_and_weights(self) -> Tuple[List[str], List[float]]:
+        """Get asset paths and normalized weights for selection.
+
+        Returns:
+            (paths, weights) tuple ready for random.choices()
+        """
+        if isinstance(self.asset_xml_paths, list):
+            return (self.asset_xml_paths, [1.0] * len(self.asset_xml_paths))
+        else:
+            paths = list(self.asset_xml_paths.keys())
+            weights = list(self.asset_xml_paths.values())
+            return (paths, weights)
 
     model_config = {
         "validate_assignment": True,

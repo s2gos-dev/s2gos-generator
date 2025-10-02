@@ -433,6 +433,8 @@ def _generate_pixel_vegetation_positions(
     max_attempts = min(n_instances * 5, 100)
     attempts = 0
 
+    asset_paths, asset_weights = species.get_asset_paths_and_weights()
+
     while len(positions) < n_instances and attempts < max_attempts:
         attempts += 1
 
@@ -449,13 +451,15 @@ def _generate_pixel_vegetation_positions(
                     break
 
         if not too_close:
+            selected_asset = random.choices(asset_paths, weights=asset_weights, k=1)[0]
+
             positions.append(
                 {
                     "x": x,
                     "y": y,
                     "elevation": 0.0,
                     "species": species.name,
-                    "asset_xml": species.asset_xml_path,
+                    "asset_xml": selected_asset,
                     "scale_min": species.scale_min,
                     "scale_max": species.scale_max,
                 }

@@ -200,6 +200,12 @@ def _process_vegetation_with_shared_datasets(
                 "position": [instance["x"], instance["y"], instance["elevation"]],
                 "rotation": random.uniform(0, vegetation_config.rotation_range),
                 "scale": random.uniform(instance["scale_min"], instance["scale_max"]),
+                "tilt_x": random.uniform(
+                    -vegetation_config.tilt_range, vegetation_config.tilt_range
+                ),
+                "tilt_y": random.uniform(
+                    -vegetation_config.tilt_range, vegetation_config.tilt_range
+                ),
                 "species": instance["species"],
                 "asset_xml": instance["asset_xml"],
             }
@@ -485,7 +491,15 @@ def save_vegetation_collection_binary(
         return {"count": 0, "bounds": None, "file_size_bytes": 0}
 
     vegetation_dtype = np.dtype(
-        [("x", "f8"), ("y", "f8"), ("z", "f8"), ("rotation", "f4"), ("scale", "f4")]
+        [
+            ("x", "f8"),
+            ("y", "f8"),
+            ("z", "f8"),
+            ("rotation", "f4"),
+            ("scale", "f4"),
+            ("tilt_x", "f4"),
+            ("tilt_y", "f4"),
+        ]
     )
 
     vegetation_array = np.zeros(len(vegetation_instances), dtype=vegetation_dtype)
@@ -498,6 +512,8 @@ def save_vegetation_collection_binary(
             float(pos[2]),
             float(instance["rotation"]),
             float(instance["scale"]),
+            float(instance.get("tilt_x", 0.0)),
+            float(instance.get("tilt_y", 0.0)),
         )
 
     np.save(output_path, vegetation_array)
@@ -531,6 +547,8 @@ def save_vegetation_collection_binary(
             "z": "float64",
             "rotation": "float32",
             "scale": "float32",
+            "tilt_x": "float32",
+            "tilt_y": "float32",
         },
     }
 
@@ -572,6 +590,8 @@ def get_vegetation_collection_metadata(binary_path) -> Dict[str, Any]:
                 "z": "float64",
                 "rotation": "float32",
                 "scale": "float32",
+                "tilt_x": "float32",
+                "tilt_y": "float32",
             },
         }
 
@@ -587,7 +607,7 @@ def load_vegetation_collection_binary(binary_path) -> np.ndarray:
         binary_path: Path to the binary vegetation file (.npy)
 
     Returns:
-        Numpy structured array with vegetation data (x, y, z, rotation, scale)
+        Numpy structured array with vegetation data (x, y, z, rotation, scale, tilt_x, tilt_y)
         Returns empty array if loading fails
     """
     try:
@@ -600,7 +620,15 @@ def load_vegetation_collection_binary(binary_path) -> np.ndarray:
     except Exception as e:
         logging.error(f"Failed to load vegetation collection from {binary_path}: {e}")
         vegetation_dtype = np.dtype(
-            [("x", "f8"), ("y", "f8"), ("z", "f8"), ("rotation", "f4"), ("scale", "f4")]
+            [
+                ("x", "f8"),
+                ("y", "f8"),
+                ("z", "f8"),
+                ("rotation", "f4"),
+                ("scale", "f4"),
+                ("tilt_x", "f4"),
+                ("tilt_y", "f4"),
+            ]
         )
         return np.array([], dtype=vegetation_dtype)
 

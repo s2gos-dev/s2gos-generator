@@ -629,10 +629,16 @@ class VegetationPlacementConfig(BaseModel):
         50, ge=1, le=10000, description="Performance limit per pixel across all species"
     )
     rotation_range: float = Field(
-        180.0,
+        360.0,
         ge=0.0,
         le=360.0,
-        description="Random rotation range in degrees for all species",
+        description="Random rotation range in degrees (azimuth around vertical axis)",
+    )
+    tilt_range: float = Field(
+        6.0,
+        ge=0.0,
+        le=23.0,
+        description="Random tilt range in degrees (±deviation from vertical for natural variation)",
     )
     spillover_max_distance_m: float = Field(
         30.0,

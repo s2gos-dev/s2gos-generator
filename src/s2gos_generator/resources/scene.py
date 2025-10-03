@@ -152,8 +152,8 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         material_config_path=ctx.config.data_sources.material_config_path,
         # Use baresoil for tree areas - 3D trees handle the vegetation, surface should be soil
         landcover_mapping_overrides={
-            "tree_cover": "baresoil",  # Surface under 3D trees
-            "shrubland": "baresoil",  # Surface under 3D shrubs
+            # "tree_cover": "baresoil",  # Surface under 3D trees
+            # "shrubland": "baresoil",  # Surface under 3D shrubs
         },
         atmosphere_config=ctx.config.atmosphere,
         hamster_data_paths=hamster_data_paths,

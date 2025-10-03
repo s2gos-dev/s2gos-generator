@@ -2,9 +2,10 @@ import fnmatch
 import logging
 import shutil
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from upath import UPath
+from s2gos_utils.io.paths import exists
 
 def import_xml_assets(
     xml_path: str,
@@ -20,7 +21,7 @@ def import_xml_assets(
     """Import Mitsuba XML and convert to S2GOS assets with material library.
 
     Args:
-        xml_path: Path to Mitsuba XML file
+        xml_path: UPath to Mitsuba XML file
         base_coordinate: [longitude, latitude] for all components
         object_id_prefix: Prefix for asset IDs
         elevation_offset: Height offset above terrain (meters)
@@ -49,12 +50,12 @@ def import_xml_assets(
         )
 
     xml_data = _parse_xml(xml_path)
-    material_library = _convert_materials(xml_data["materials"])
+    material_library = _convert_materials(xml_data["materials"], xml_path)
 
     assets = []
 
     for shape in xml_data["shapes"]:
-        ply_filename = Path(shape["file"]).stem
+        ply_filename = UPath(shape["file"]).stem
 
         material_ref = None
         if material_mappings:
@@ -112,7 +113,7 @@ def merge_material_libraries(
 
 def _parse_xml(xml_path: str) -> Dict[str, Any]:
     """Parse Mitsuba XML file to extract materials and shapes."""
-    xml_file = Path(xml_path)
+    xml_file = UPath(xml_path)
     if not xml_file.exists():
         raise FileNotFoundError(f"XML file not found: {xml_path}")
 
@@ -215,9 +216,21 @@ def _parse_property(element) -> Any:
     return value
 
 
-def _convert_materials(mitsuba_materials: Dict[str, Dict]) -> Dict[str, Dict]:
-    """Convert materials to S2GOS format using converter registry."""
+def _convert_materials(
+    mitsuba_materials: Dict[str, Dict], xml_path: str
+) -> Dict[str, Dict]:
+    """Convert materials to S2GOS format using converter registry.
+
+    Args:
+        mitsuba_materials: Dictionary of material definitions from XML
+        xml_path: UPath to source XML file (for resolving relative spectral paths)
+
+    Returns:
+        Dictionary of S2GOS material definitions
+    """
+
     s2gos_materials = {}
+    xml_dir = UPath(xml_path).parent
 
     for mat_id, mat_data in mitsuba_materials.items():
         try:
@@ -230,24 +243,49 @@ def _convert_materials(mitsuba_materials: Dict[str, Dict]) -> Dict[str, Dict]:
                 mat_type = nested_type
 
             converter = MATERIAL_CONVERTERS.get(mat_type, convert_diffuse)
-            s2gos_materials[sanitized_mat_id] = converter(mat_data["properties"])
+            s2gos_materials[sanitized_mat_id] = converter(
+                mat_data["properties"], xml_dir
+            )
 
         except Exception as e:
             logging.warning(
                 f"Failed to convert material '{mat_id}': {e}. Using diffuse fallback."
             )
             sanitized_mat_id = mat_id.replace(".", "_").replace("-", "_")
-            s2gos_materials[sanitized_mat_id] = convert_diffuse({})
+            s2gos_materials[sanitized_mat_id] = convert_diffuse({}, xml_dir)
 
     return s2gos_materials
 
 
-def convert_diffuse(props: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert diffuse material."""
+def convert_diffuse(props: Dict[str, Any], xml_dir) -> Dict[str, Any]:
+    """Convert diffuse material.
+
+    Args:
+        props: Material properties from XML
+        xml_dir: Directory containing source XML file (for resolving relative paths)
+
+    Returns:
+        S2GOS material definition with absolute paths
+
+    Raises:
+        FileNotFoundError: If spectral file does not exist
+    """
+
     reflectance = props.get("reflectance", [0.5, 0.5, 0.5])
     if isinstance(reflectance, dict) and "file" in reflectance:
+        file_path = UPath(reflectance["file"])
+        if not file_path.is_absolute():
+            file_path = (xml_dir / file_path).resolve()
+
+        if not exists(file_path):
+            raise FileNotFoundError(
+                f"Spectral data file not found: {file_path}\n"
+                f"Original path: {reflectance['file']}\n"
+                f"XML directory: {xml_dir}"
+            )
+
         reflectance_spec = {
-            "path": f"spectra/{reflectance['file']}",
+            "path": str(file_path),
             "variable": "reflectance",
         }
     elif isinstance(reflectance, (list, tuple)):
@@ -285,9 +323,9 @@ def convert_conductor(props: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def convert_roughconductor(props: Dict[str, Any]) -> Dict[str, Any]:
+def convert_roughconductor(props: Dict[str, Any], xml_dir) -> Dict[str, Any]:
     """Convert rough conductor material."""
-    result = convert_conductor(props)
+    result = convert_conductor(props, xml_dir)
     result["type"] = "rough_conductor"
     result["distribution"] = props.get("distribution", "ggx")
 
@@ -345,14 +383,37 @@ def convert_plastic(props: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def convert_bilambertian(props: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert bi-lambertian (two-sided diffuse) material."""
+def convert_bilambertian(props: Dict[str, Any], xml_dir) -> Dict[str, Any]:
+    """Convert bi-lambertian (two-sided diffuse) material.
+
+    Args:
+        props: Material properties from XML
+        xml_dir: Directory containing source XML file (for resolving relative paths)
+
+    Returns:
+        S2GOS material definition with absolute paths
+
+    Raises:
+        FileNotFoundError: If spectral file does not exist
+    """
+
     reflectance = props.get("reflectance", [0.5, 0.5, 0.5])
     transmittance = props.get("transmittance", [0.0, 0.0, 0.0])
 
     if isinstance(reflectance, dict) and "file" in reflectance:
+        file_path = UPath(reflectance["file"])
+        if not file_path.is_absolute():
+            file_path = (xml_dir / file_path).resolve()
+
+        if not exists(file_path):
+            raise FileNotFoundError(
+                f"Reflectance spectral data file not found: {file_path}\n"
+                f"Original path: {reflectance['file']}\n"
+                f"XML directory: {xml_dir}"
+            )
+
         reflectance_spec = {
-            "path": f"spectra/{reflectance['file']}",
+            "path": str(file_path),
             "variable": "reflectance",
         }
     elif isinstance(reflectance, (list, tuple)):
@@ -363,8 +424,19 @@ def convert_bilambertian(props: Dict[str, Any]) -> Dict[str, Any]:
         reflectance_spec = {"type": "uniform", "value": [0.5, 0.5, 0.5]}
 
     if isinstance(transmittance, dict) and "file" in transmittance:
+        file_path = UPath(transmittance["file"])
+        if not file_path.is_absolute():
+            file_path = (xml_dir / file_path).resolve()
+
+        if not exists(file_path):
+            raise FileNotFoundError(
+                f"Transmittance spectral data file not found: {file_path}\n"
+                f"Original path: {transmittance['file']}\n"
+                f"XML directory: {xml_dir}"
+            )
+
         transmittance_spec = {
-            "path": f"spectra/{transmittance['file']}",
+            "path": str(file_path),
             "variable": "transmittance",
         }
     elif isinstance(transmittance, (list, tuple)):
@@ -520,19 +592,18 @@ def create_tree_shapegroup(
     """Create Mitsuba shapegroup from tree XML file.
 
     Args:
-        tree_xml_path: Path to tree XML file
+        tree_xml_path: UPath to tree XML file
         output_dir: Scene output directory where mesh files will be copied
 
     Returns:
         Dictionary containing shapegroup definition for Mitsuba scene
     """
     xml_data = _parse_xml(tree_xml_path)
-    materials = _convert_materials(xml_data["materials"])
+    materials = _convert_materials(xml_data["materials"], tree_xml_path)
 
     shapegroup = {"type": "shapegroup", "id": "tree_group"}
 
     if output_dir:
-        from upath import UPath
 
         tree_meshes_dir = UPath(output_dir) / "meshes" / "tree"
         tree_meshes_dir.mkdir(parents=True, exist_ok=True)
@@ -544,7 +615,7 @@ def create_tree_shapegroup(
         # Sanitize material ID to match the sanitized IDs from _convert_materials
         material_id = shape["material"].replace(".", "_").replace("-", "_")
 
-        source_file_path = Path(shape["file"])
+        source_file_path = UPath(shape["file"])
 
         if output_dir and source_file_path.exists():
             dest_filename = source_file_path.name
@@ -580,7 +651,7 @@ def _validate_assets(
         asset_id = asset["object_id"]
 
         # Note: Material references may be external (from scene library) so we don't validate them here
-        ply_path = Path(asset["ply_path"])
+        ply_path = UPath(asset["ply_path"])
         if not ply_path.exists():
             errors.append(f"Asset '{asset_id}': PLY file not found: {ply_path}")
 

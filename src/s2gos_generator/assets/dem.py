@@ -54,6 +54,7 @@ class DEMProcessor(BaseTileProcessor):
         center_lat: Optional[float] = None,
         center_lon: Optional[float] = None,
         aoi_size_km: Optional[float] = None,
+        flatten_dem: bool = False,
     ) -> xr.Dataset:
         """Generate DEM data for the AOI."""
         tile_paths = self._find_intersecting_tiles(aoi_polygon)
@@ -75,6 +76,8 @@ class DEMProcessor(BaseTileProcessor):
                 aoi_size_km,
                 fillna_value,
             )
+        if flatten_dem:
+            merged_dem["elevation"] = xr.zeros_like(merged_dem["elevation"])
 
         self._save_dataset(merged_dem, output_path)
 

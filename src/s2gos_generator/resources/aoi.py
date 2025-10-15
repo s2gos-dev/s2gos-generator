@@ -27,6 +27,11 @@ def generate_aoi(ctx: SceneResourceContext) -> Optional[Path]:
 
     ctx._target_aoi_polygon = aoi_polygon
 
+    corners = list(aoi_polygon.exterior.coords[:-1])
+    logging.info("AOI corners (lon, lat):")
+    for i, (lon, lat) in enumerate(corners):
+        logging.info(f"  Corner {i + 1}: ({lat:.6f}, {lon:.6f})")
+
     logging.info(
         f"AOI polygon: {ctx.aoi_size_km}km x {ctx.aoi_size_km}km at ({ctx.center_lat:.6f}, {ctx.center_lon:.6f})"
     )

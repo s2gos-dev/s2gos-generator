@@ -149,6 +149,9 @@ class ProcessingOptions(BaseModel):
     )
     handle_dem_nans: bool = Field(True, description="Handle NaN values in DEM data")
     dem_fillna_value: float = Field(0.0, description="Fill value for DEM NaN values")
+    flatten_dem: bool = Field(
+        False, description="Flatten DEM to zero elevation for testing"
+    )
 
 
 class ThermophysicalConfig(BaseModel):

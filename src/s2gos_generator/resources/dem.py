@@ -38,6 +38,7 @@ def process_target_dem(ctx: SceneResourceContext) -> Optional[Path]:
         center_lat=ctx.center_lat,
         center_lon=ctx.center_lon,
         aoi_size_km=ctx.aoi_size_km,
+        flatten_dem=ctx.config.processing.flatten_dem,
     )
 
     ctx.assets.dem_file = dem_output_path
@@ -79,6 +80,7 @@ def process_buffer_dem(ctx: SceneResourceContext) -> Optional[Path]:
         center_lat=ctx.center_lat,
         center_lon=ctx.center_lon,
         aoi_size_km=buffer_size_km,
+        flatten_dem=ctx.config.processing.flatten_dem,
     )
 
     ctx.assets.buffer_dem_file = dem_output_path

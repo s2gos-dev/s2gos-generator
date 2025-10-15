@@ -4,8 +4,9 @@ import shutil
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
 
-from upath import UPath
 from s2gos_utils.io.paths import exists
+from upath import UPath
+
 
 def import_xml_assets(
     xml_path: str,
@@ -604,7 +605,6 @@ def create_tree_shapegroup(
     shapegroup = {"type": "shapegroup", "id": "tree_group"}
 
     if output_dir:
-
         tree_meshes_dir = UPath(output_dir) / "meshes" / "tree"
         tree_meshes_dir.mkdir(parents=True, exist_ok=True)
 

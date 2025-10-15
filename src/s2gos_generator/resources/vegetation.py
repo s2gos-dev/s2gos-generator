@@ -109,7 +109,6 @@ def _process_vegetation_with_shared_datasets(
         )
 
         all_vegetation_instances = []
-        random.seed(42)
 
         for (
             landcover_class,

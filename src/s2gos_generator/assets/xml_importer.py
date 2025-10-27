@@ -324,9 +324,9 @@ def convert_conductor(props: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def convert_roughconductor(props: Dict[str, Any], xml_dir) -> Dict[str, Any]:
+def convert_roughconductor(props: Dict[str, Any]) -> Dict[str, Any]:
     """Convert rough conductor material."""
-    result = convert_conductor(props, xml_dir)
+    result = convert_conductor(props)
     result["type"] = "rough_conductor"
     result["distribution"] = props.get("distribution", "ggx")
 

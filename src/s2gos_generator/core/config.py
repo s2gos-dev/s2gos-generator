@@ -67,7 +67,11 @@ class SceneLocation(BaseModel):
 
 
 def _load_default_data_sources_config() -> Dict[str, Any]:
-    """Load default paths from defaults.yaml file.
+    """Load default paths from defaults.yaml file and augment global resolver.
+
+    This function serves dual purpose:
+    1. Load default data source paths (DEM, landcover, materials)
+    2. Augment the global resolver with custom asset search paths
 
     The defaults file location can be overridden using the S2GOS_DEFAULTS_PATH
     environment variable. If not set, uses the package's defaults.yaml file.
@@ -80,17 +84,67 @@ def _load_default_data_sources_config() -> Dict[str, Any]:
         defaults_path = UPath(env_path)
         if not exists(defaults_path):
             return {}
-        return read_yaml(defaults_path)
+        defaults = read_yaml(defaults_path)
+    else:
+        if not exists(defaults_path):
+            return {}
+        defaults = read_yaml(defaults_path)
 
-    if not exists(defaults_path):
-        return {}
-
-    defaults = read_yaml(defaults_path)
+    asset_paths = defaults.get("asset_search_paths", [])
+    if asset_paths:
+        for path in asset_paths:
+            # Skip {PACKAGE_DATA} placeholder - already in global resolver
+            if "{PACKAGE_DATA}" in path:
+                continue
+            upath = UPath(path)
+            if upath.exists():
+                try:
+                    resolver.append(str(upath))
+                except Exception:
+                    pass
 
     for key, value in defaults.items():
-        defaults[key] = str(resolver.resolve(value))
+        if key != "asset_search_paths":
+            defaults[key] = str(resolver.resolve(value, strict=True))
 
     return defaults
+
+
+def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
+    """Resolve an asset path using the global resolver.
+
+    This function uses the global resolver instance which includes:
+    - Package data directory (s2gos_generator/data)
+    - Custom paths from asset_search_paths in defaults.yaml
+    - Paths from S2GOS_SEARCH_PATHS environment variable
+    - Paths from defaults.txt
+
+    Args:
+        filename: Asset filename or path to resolve
+        asset_type: Type of asset for error messages (e.g., "vegetation XML", "PLY mesh")
+
+    Returns:
+        Resolved absolute path as string
+
+    Raises:
+        ValueError: If asset cannot be found in any search path
+    """
+    try:
+        return str(resolver.resolve(filename, strict=True))
+    except FileNotFoundError as e:
+        # Enhance error message with asset-specific context
+        search_paths = [str(p) for p in resolver.paths]
+        search_paths_str = (
+            "\n  - ".join(search_paths) if search_paths else "(none configured)"
+        )
+        raise ValueError(
+            f"{asset_type} file '{filename}' not found in any search path.\n"
+            f"Searched in:\n  - {search_paths_str}\n\n"
+            f"To fix this:\n"
+            f"  1. Add the directory containing '{filename}' to asset_search_paths in defaults.yaml\n"
+            f"  2. Set S2GOS_SEARCH_PATHS environment variable with additional search paths\n"
+            f"  3. Provide the full absolute path instead of just the filename"
+        ) from e
 
 
 class DataSources(BaseModel):
@@ -407,11 +461,10 @@ class UserAssets(BaseModel):
     @field_validator("ply_path", mode="before")
     @classmethod
     def validate_ply_path(cls, v):
-        """Validate PLY file exists."""
-        v = UPath(v)
-        if not exists(v):
-            raise ValueError(f"PLY file not found: {v}")
-        return v
+        """Validate and resolve PLY file path using configured search paths."""
+        v_str = str(v)
+        resolved = _resolve_asset_path(v_str, asset_type="PLY mesh")
+        return UPath(resolved)
 
     @field_validator("material")
     @classmethod
@@ -475,11 +528,10 @@ class XmlSceneConfig(BaseModel):
     @field_validator("xml_path", mode="before")
     @classmethod
     def validate_xml_path(cls, v):
-        """Validate XML file exists."""
-        v = UPath(v)
-        if not exists(v):
-            raise ValueError(f"XML file not found: {v}")
-        return v
+        """Validate and resolve XML file path using configured search paths."""
+        v_str = str(v)
+        resolved = _resolve_asset_path(v_str, asset_type="XML scene")
+        return UPath(resolved)
 
     @field_validator("base_coordinate")
     @classmethod
@@ -559,6 +611,30 @@ class VegetationSpecies(BaseModel):
                 if weight <= 0:
                     raise ValueError(f"Weight must be positive for {path}: {weight}")
         return v
+
+    @model_validator(mode="after")
+    def resolve_asset_paths(self):
+        """Resolve all asset XML paths using configured search paths.
+
+        This ensures all vegetation assets can be found before scene generation,
+        providing fail-fast behavior with clear error messages.
+        """
+        if isinstance(self.asset_xml_paths, list):
+            resolved_paths = []
+            for path in self.asset_xml_paths:
+                resolved = _resolve_asset_path(path, asset_type="vegetation XML")
+                resolved_paths.append(resolved)
+            # Use object.__setattr__ to avoid triggering validate_assignment recursion
+            object.__setattr__(self, "asset_xml_paths", resolved_paths)
+        elif isinstance(self.asset_xml_paths, dict):
+            resolved_dict = {}
+            for path, weight in self.asset_xml_paths.items():
+                resolved = _resolve_asset_path(path, asset_type="vegetation XML")
+                resolved_dict[resolved] = weight
+            # Use object.__setattr__ to avoid triggering validate_assignment recursion
+            object.__setattr__(self, "asset_xml_paths", resolved_dict)
+
+        return self
 
     def get_asset_paths_and_weights(self) -> Tuple[List[str], List[float]]:
         """Get asset paths and normalized weights for selection.

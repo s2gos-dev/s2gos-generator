@@ -4,7 +4,7 @@
 dem_index_path: "dem_index.feather"
 dem_root_dir: "/media/DATA/DEM"
 landcover_index_path: "landcover_index.feather"
-landcover_root_dir: "/home/gonzalezm/Data"
+landcover_root_dir: "/media/DATA/Landcover/"
 material_config_path: "materials.json"
 
 # Asset search paths - locations to search for vegetation XML files, user PLY meshes, and XML scene imports

@@ -19,17 +19,14 @@ from .._version import get_version
 class AerosolDataset(str, Enum):
     """Comprehensive aerosol datasets from Eradiate."""
 
-    # SIXSV datasets
     SIXSV_CONTINENTAL = "sixsv-continental"
     SIXSV_MARITIME = "sixsv-maritime"
     SIXSV_URBAN = "sixsv-urban"
     SIXSV_DESERT = "sixsv-desert"
-
-    # Additional Eradiate aerosol datasets
-    ELTERMAN_CLEAR = "elterman-clear"
-    ELTERMAN_HAZY = "elterman-hazy"
-    MCCLATCHY_CLEAR = "mcclatchy-clear"
-    MCCLATCHY_HAZY = "mcclatchy-hazy"
+    SIXSV_BIOMASS_BURNING = "sixsv-biomass_burning"
+    SIXSV_STRATOSPHERIC = "sixsv-stratospheric"
+    GOVAERTS_2021_CONTINENTAL_EXTRAPOLATED = "govaerts_2021-continental-extrapolated"
+    GOVAERTS_2021_DESERT_EXTRAPOLATED = "govaerts_2021-desert-extrapolated"
 
 
 class AbsorptionDatabase(str, Enum):
@@ -38,18 +35,17 @@ class AbsorptionDatabase(str, Enum):
     GECKO = "gecko"
     KOMODO = "komodo"
     MONOTROPA = "monotropa"
-    HALENIA = "halenia"
-    HITRAN_2020 = "hitran-2020"
+    MYCENA = "mycena"
+    PANELLUS = "panellus"
+    TUBER = "tuber"
 
 
 class AtmosphereType(str, Enum):
     """Atmosphere types aligned with Eradiate's atmosphere classes."""
 
-    MOLECULAR = "molecular"  # MolecularAtmosphere - clear sky, gaseous only
-    HOMOGENEOUS = "homogeneous"  # HomogeneousAtmosphere - uniform optical properties
-    HETEROGENEOUS = (
-        "heterogeneous"  # HeterogeneousAtmosphere - molecular + particle layers
-    )
+    MOLECULAR = "molecular"
+    HOMOGENEOUS = "homogeneous"
+    HETEROGENEOUS = "heterogeneous"
 
 
 class SceneLocation(BaseModel):
@@ -429,9 +425,9 @@ class UserAssets(BaseModel):
     coordinate: list[float] = Field(
         ..., description="Object placement coordinates [lon, lat]"
     )
-    material: str = Field(
+    material: Union[str, Dict[str, Any]] = Field(
         ...,
-        description="Material reference (string ID) - must exist in scene material library",
+        description="Material reference (string ID) or inline material definition dict",
     )
     elevation_offset: float = Field(
         0.0, description="Height offset above terrain surface in meters"
@@ -469,16 +465,22 @@ class UserAssets(BaseModel):
     @field_validator("material")
     @classmethod
     def validate_material(cls, v):
-        """Validate material reference is a non-empty string."""
-        if not isinstance(v, str):
+        """Validate material is either a non-empty string reference or a valid dict definition."""
+        if isinstance(v, str):
+            if not v.strip():
+                raise ValueError("Material reference cannot be empty")
+            return v.strip()
+        elif isinstance(v, dict):
+            if "type" not in v:
+                raise ValueError(
+                    "Inline material definition must have 'type' field. "
+                    "Example: {'type': 'diffuse', 'reflectance': 0.5}"
+                )
+            return v
+        else:
             raise ValueError(
-                f"Material must be a string reference, got {type(v).__name__}. "
-                "Inline material definitions are no longer supported. "
-                "Define materials in the scene's material library."
+                f"Material must be a string reference or dict definition, got {type(v).__name__}"
             )
-        if not v.strip():
-            raise ValueError("Material reference cannot be empty")
-        return v.strip()
 
     @field_validator("scale")
     @classmethod
@@ -488,12 +490,105 @@ class UserAssets(BaseModel):
             raise ValueError("Scale must be positive")
         return v
 
+    def get_inline_material_id(self) -> Optional[str]:
+        """Return generated material ID for inline materials, None otherwise."""
+        if isinstance(self.material, dict):
+            return f"{self.object_id}_material"
+        return None
+
+    def get_inline_material_dict(self) -> Optional[Dict[str, Any]]:
+        """Return inline material definition if present, else None."""
+        if isinstance(self.material, dict):
+            return self.material
+        return None
+
     model_config = {
         "arbitrary_types_allowed": True,
         "json_encoders": {UPath: lambda v: str(v)},
         "validate_assignment": True,
         "extra": "forbid",
     }
+
+
+class MaterialRegion(BaseModel):
+    """Material region for spatially-selective material overrides.
+
+    Defines a spatial region where the terrain material will be overridden with a
+    specified material. Supports multiple geometry types and coordinate systems.
+    """
+
+    region_id: str = Field(..., description="Unique identifier for this region")
+
+    geometry: Dict[str, Any] = Field(
+        ...,
+        description="Region geometry specification (rectangle or polygon). "
+        "See region_geometry module for details.",
+    )
+
+    material_name: str = Field(
+        ...,
+        description="Material reference to apply in this region (must exist in materials)",
+    )
+
+    priority: int = Field(
+        0,
+        description="Priority for overlapping regions (higher priority wins). "
+        "Default is 0.",
+    )
+
+    applies_to: List[Literal["target", "buffer", "background"]] = Field(
+        ["target"],
+        description="Which scene areas this region applies to (target/buffer/background)",
+    )
+
+    landcover_filter: Optional[List[int]] = Field(
+        None,
+        description="Optional ESA WorldCover class filter. If specified, only override "
+        "pixels matching these landcover classes. If None, override all pixels. "
+        "Example: [60, 80] = only bare/sparse vegetation",
+    )
+
+    @field_validator("region_id")
+    @classmethod
+    def validate_region_id(cls, v):
+        """Validate region ID is non-empty and valid for filenames."""
+        if not v or not v.strip():
+            raise ValueError("region_id cannot be empty")
+        # Check for filesystem-safe characters
+        if any(char in v for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
+            raise ValueError(
+                f"region_id '{v}' contains invalid characters for filesystem paths"
+            )
+        return v.strip()
+
+    @field_validator("material_name")
+    @classmethod
+    def validate_material_name(cls, v):
+        """Validate material reference."""
+        if not v or not v.strip():
+            raise ValueError("material_name cannot be empty")
+        return v.strip()
+
+    @field_validator("applies_to")
+    @classmethod
+    def validate_applies_to(cls, v):
+        """Ensure at least one area is specified."""
+        if not v:
+            raise ValueError("applies_to must specify at least one area")
+        return v
+
+    @field_validator("landcover_filter")
+    @classmethod
+    def validate_landcover_filter(cls, v):
+        """Validate landcover class codes."""
+        if v is not None:
+            for code in v:
+                if not (10 <= code <= 100):
+                    raise ValueError(
+                        f"Invalid ESA WorldCover class code: {code}. "
+                        "Valid range is 10-100 (in steps of 10)"
+                    )
+        return v
 
 
 class XmlSceneConfig(BaseModel):
@@ -794,6 +889,14 @@ class SceneGenConfig(BaseModel):
     )
     xml_scenes: list[XmlSceneConfig] = Field(
         [], description="XML scene files to import for additional assets and materials"
+    )
+    material_regions: list[MaterialRegion] = Field(
+        [],
+        description="Material regions for spatially-selective material overrides"
+    )
+    region_material_defs: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Material definitions for region materials"
     )
     vegetation_placement: Optional[VegetationPlacementConfig] = Field(
         None,

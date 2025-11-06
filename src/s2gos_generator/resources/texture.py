@@ -4,6 +4,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import xarray as xr
+from PIL import Image
+
 from ..assets.texture import TextureGenerator
 from ..core.context import SceneResourceContext
 
@@ -38,6 +42,67 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
     ctx.assets.selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.preview_texture_file = preview_texture_path
+
+    if ctx.config.material_regions:
+        applicable_regions = [r for r in ctx.config.material_regions if "target" in r.applies_to]
+
+        if applicable_regions:
+            ds = xr.open_zarr(landcover_file_path)
+            landcover_data = ds[list(ds.data_vars)[0]]
+            width_px = len(landcover_data.coords["x"].values)
+            height_px = len(landcover_data.coords["y"].values)
+            scene_bounds = {
+                "xmin": float(landcover_data.coords["x"].min()),
+                "xmax": float(landcover_data.coords["x"].max()),
+                "ymin": float(landcover_data.coords["y"].min()),
+                "ymax": float(landcover_data.coords["y"].max()),
+            }
+
+            from s2gos_utils.coordinates import CoordinateSystem
+            from ..core.region_geometry import geometry_from_dict
+            coord_system = CoordinateSystem(center_lat=ctx.center_lat, center_lon=ctx.center_lon)
+
+            with Image.open(selection_texture_path) as img:
+                texture_array = np.array(img)
+            texture_2d = texture_array[:, :, 0] if len(texture_array.shape) == 3 else texture_array.copy()
+
+            landcover_2d = None
+            if any(r.landcover_filter is not None for r in applicable_regions):
+                landcover_2d = np.flipud(landcover_data.values)
+
+            if not hasattr(ctx, "region_material_indices"):
+                ctx.region_material_indices = {}
+                region_materials = set(r.material_name for r in ctx.config.material_regions)
+                for idx, mat_name in enumerate(sorted(region_materials), start=11):
+                    ctx.region_material_indices[mat_name] = idx
+
+            modified = False
+            for region_config in applicable_regions:
+                material_idx = ctx.region_material_indices[region_config.material_name]
+
+                try:
+                    geometry = geometry_from_dict(region_config.geometry)
+                    mask = geometry.to_mask(width_px, height_px, scene_bounds, coord_system)
+                    mask_flipped = np.flipud(mask)
+                    binary_mask = mask_flipped > 0
+
+                    if region_config.landcover_filter is not None and landcover_2d is not None:
+                        binary_mask = binary_mask & np.isin(landcover_2d, region_config.landcover_filter)
+
+                    pixels_modified = np.sum(binary_mask)
+                    if pixels_modified > 0:
+                        texture_2d[binary_mask] = material_idx
+                        modified = True
+                        logging.info(f"Applied region '{region_config.region_id}': {pixels_modified} pixels → material '{region_config.material_name}' (index {material_idx})")
+                except Exception as e:
+                    logging.error(f"Failed to apply region '{region_config.region_id}': {e}")
+
+            if modified:
+                img_to_save = Image.fromarray(texture_2d, mode='L')
+                img_to_save.save(selection_texture_path)
+                logging.info(f"Updated texture with material regions: {selection_texture_path}")
+
+            ds.close()
 
     logging.info(f"Target texture: {selection_texture_path}")
     return selection_texture_path
@@ -75,6 +140,67 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
     if preview_texture_path:
         ctx.assets.buffer_preview_texture_file = preview_texture_path
 
+
+    if ctx.config.material_regions:
+        applicable_regions = [r for r in ctx.config.material_regions if "buffer" in r.applies_to]
+
+        if applicable_regions:
+            ds = xr.open_zarr(buffer_landcover_file_path)
+            landcover_data = ds[list(ds.data_vars)[0]]
+            width_px = len(landcover_data.coords["x"].values)
+            height_px = len(landcover_data.coords["y"].values)
+            scene_bounds = {
+                "xmin": float(landcover_data.coords["x"].min()),
+                "xmax": float(landcover_data.coords["x"].max()),
+                "ymin": float(landcover_data.coords["y"].min()),
+                "ymax": float(landcover_data.coords["y"].max()),
+            }
+
+            from s2gos_utils.coordinates import CoordinateSystem
+            from ..core.region_geometry import geometry_from_dict
+            coord_system = CoordinateSystem(center_lat=ctx.center_lat, center_lon=ctx.center_lon)
+
+            with Image.open(selection_texture_path) as img:
+                texture_array = np.array(img)
+            texture_2d = texture_array[:, :, 0] if len(texture_array.shape) == 3 else texture_array.copy()
+
+            landcover_2d = None
+            if any(r.landcover_filter is not None for r in applicable_regions):
+                landcover_2d = np.flipud(landcover_data.values)
+
+            if not hasattr(ctx, "region_material_indices"):
+                ctx.region_material_indices = {}
+                region_materials = set(r.material_name for r in ctx.config.material_regions)
+                for idx, mat_name in enumerate(sorted(region_materials), start=11):
+                    ctx.region_material_indices[mat_name] = idx
+
+            modified = False
+            for region_config in applicable_regions:
+                material_idx = ctx.region_material_indices[region_config.material_name]
+                try:
+                    geometry = geometry_from_dict(region_config.geometry)
+                    mask = geometry.to_mask(width_px, height_px, scene_bounds, coord_system)
+                    mask_flipped = np.flipud(mask)
+                    binary_mask = mask_flipped > 0
+
+                    if region_config.landcover_filter is not None and landcover_2d is not None:
+                        binary_mask = binary_mask & np.isin(landcover_2d, region_config.landcover_filter)
+
+                    pixels_modified = np.sum(binary_mask)
+                    if pixels_modified > 0:
+                        texture_2d[binary_mask] = material_idx
+                        modified = True
+                        logging.info(f"Applied region '{region_config.region_id}' to buffer: {pixels_modified} pixels → material '{region_config.material_name}' (index {material_idx})")
+                except Exception as e:
+                    logging.error(f"Failed to apply region '{region_config.region_id}' to buffer: {e}")
+
+            if modified:
+                img_to_save = Image.fromarray(texture_2d, mode='L')
+                img_to_save.save(selection_texture_path)
+                logging.info(f"Updated buffer texture with material regions: {selection_texture_path}")
+
+            ds.close()
+
     return selection_texture_path
 
 
@@ -107,5 +233,65 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
     ctx.assets.background_selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.background_preview_texture_file = preview_texture_path
+
+    if ctx.config.material_regions:
+        applicable_regions = [r for r in ctx.config.material_regions if "background" in r.applies_to]
+
+        if applicable_regions:
+            ds = xr.open_zarr(background_landcover_file_path)
+            landcover_data = ds[list(ds.data_vars)[0]]
+            width_px = len(landcover_data.coords["x"].values)
+            height_px = len(landcover_data.coords["y"].values)
+            scene_bounds = {
+                "xmin": float(landcover_data.coords["x"].min()),
+                "xmax": float(landcover_data.coords["x"].max()),
+                "ymin": float(landcover_data.coords["y"].min()),
+                "ymax": float(landcover_data.coords["y"].max()),
+            }
+
+            from s2gos_utils.coordinates import CoordinateSystem
+            from ..core.region_geometry import geometry_from_dict
+            coord_system = CoordinateSystem(center_lat=ctx.center_lat, center_lon=ctx.center_lon)
+
+            with Image.open(selection_texture_path) as img:
+                texture_array = np.array(img)
+            texture_2d = texture_array[:, :, 0] if len(texture_array.shape) == 3 else texture_array.copy()
+
+            landcover_2d = None
+            if any(r.landcover_filter is not None for r in applicable_regions):
+                landcover_2d = np.flipud(landcover_data.values)
+
+            if not hasattr(ctx, "region_material_indices"):
+                ctx.region_material_indices = {}
+                region_materials = set(r.material_name for r in ctx.config.material_regions)
+                for idx, mat_name in enumerate(sorted(region_materials), start=11):
+                    ctx.region_material_indices[mat_name] = idx
+
+            modified = False
+            for region_config in applicable_regions:
+                material_idx = ctx.region_material_indices[region_config.material_name]
+                try:
+                    geometry = geometry_from_dict(region_config.geometry)
+                    mask = geometry.to_mask(width_px, height_px, scene_bounds, coord_system)
+                    mask_flipped = np.flipud(mask)
+                    binary_mask = mask_flipped > 0
+
+                    if region_config.landcover_filter is not None and landcover_2d is not None:
+                        binary_mask = binary_mask & np.isin(landcover_2d, region_config.landcover_filter)
+
+                    pixels_modified = np.sum(binary_mask)
+                    if pixels_modified > 0:
+                        texture_2d[binary_mask] = material_idx
+                        modified = True
+                        logging.info(f"Applied region '{region_config.region_id}' to background: {pixels_modified} pixels → material '{region_config.material_name}' (index {material_idx})")
+                except Exception as e:
+                    logging.error(f"Failed to apply region '{region_config.region_id}' to background: {e}")
+
+            if modified:
+                img_to_save = Image.fromarray(texture_2d, mode='L')
+                img_to_save.save(selection_texture_path)
+                logging.info(f"Updated background texture with material regions: {selection_texture_path}")
+
+            ds.close()
 
     return selection_texture_path

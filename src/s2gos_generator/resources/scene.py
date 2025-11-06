@@ -64,6 +64,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         buffer_dem_file = str(ctx.assets.buffer_dem_file.relative_to(ctx.output_dir))
 
     processed_objects = getattr(ctx, "processed_objects", None)
+    inline_materials = getattr(ctx, "inline_materials", {})
 
     hamster_data_paths = getattr(ctx, "hamster_data_paths", None)
     if hamster_data_paths:
@@ -77,6 +78,13 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
 
     vegetation_instances = getattr(ctx, "vegetation_instances", None)
     vegetation_collection_references = []
+
+    region_materials = getattr(ctx, "region_materials", None)
+    if region_materials:
+        logging.info(f"Adding {len(region_materials)} region materials to scene")
+        if additional_material_libraries is None:
+            additional_material_libraries = []
+        additional_material_libraries.append(region_materials)
 
     if vegetation_instances:
         logging.info(
@@ -158,8 +166,10 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         atmosphere_config=ctx.config.atmosphere,
         hamster_data_paths=hamster_data_paths,
         processed_objects=processed_objects,
+        inline_materials=inline_materials,
         additional_material_libraries=additional_material_libraries,
         vegetation_collection_references=vegetation_collection_references,
+        region_material_indices=getattr(ctx, "region_material_indices", None),
     )
 
     # Save scene description to file

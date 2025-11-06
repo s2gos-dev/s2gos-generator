@@ -22,6 +22,7 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
     from s2gos_utils.io.paths import mkdir
 
     processed_objects = []
+    inline_materials = {}
 
     objects_dir = ctx.output_dir / "objects"
     mkdir(objects_dir)
@@ -61,7 +62,14 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
             }
 
             if asset.material:
-                object_data["material"] = asset.material
+                if isinstance(asset.material, dict):
+                    # Generate unique material ID
+                    mat_id = asset.get_inline_material_id()
+                    inline_materials[mat_id] = asset.material
+                    object_data["material"] = mat_id
+                    logging.info(f"Added inline material '{mat_id}' for object '{asset.object_id}'")
+                else:
+                    object_data["material"] = asset.material
 
             if asset.face_normals is not None:
                 object_data["face_normals"] = asset.face_normals
@@ -73,8 +81,10 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
                 f"Failed to process user asset {asset.object_id}: {e}"
             ) from e
 
-    # Store processed objects in context for scene description
     ctx.processed_objects = processed_objects
+    ctx.inline_materials = inline_materials
 
     logging.info(f"Processed {len(processed_objects)} user assets")
+    if inline_materials:
+        logging.info(f"Extracted {len(inline_materials)} inline material definitions")
     return objects_dir

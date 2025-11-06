@@ -183,6 +183,13 @@ def create_s2gos_scene(
             material_name = material_mapping[landcover_class_name]
             material_indices[texture_index] = material_name
 
+    region_material_indices = kwargs.get("region_material_indices", {})
+    if region_material_indices:
+        for material_name, texture_index in region_material_indices.items():
+            if material_name not in material_indices.values():
+                material_indices[texture_index] = material_name
+                logging.info(f"Added region material '{material_name}' with texture index {texture_index}")
+
     target = {
         "mesh": mesh_path,
         "selection_texture": texture_path,
@@ -282,6 +289,16 @@ def create_s2gos_scene(
                 background["hamster_data"] = str(hamster_data_paths["background"])
 
     materials = load_materials(material_config_path)
+
+    inline_materials = kwargs.get("inline_materials", {})
+    if inline_materials:
+        logging.info(f"Adding {len(inline_materials)} inline material definitions from UserAssets")
+        for mat_id, mat_def in inline_materials.items():
+            if mat_id in materials:
+                logging.warning(
+                    f"Inline material '{mat_id}' overwrites existing material from materials.json"
+                )
+            materials[mat_id] = Material.from_dict(mat_def, id=mat_id)
 
     if additional_material_libraries:
         for library in additional_material_libraries:

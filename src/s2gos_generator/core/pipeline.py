@@ -233,11 +233,18 @@ class SceneGenerationPipeline:
         self.initialize()
 
         try:
+            # Collect region materials if defined
+            region_materials = self.config.region_material_defs if self.config.region_material_defs else None
+
             ctx = SceneResourceContext(
                 config=self.config,
                 additional_material_libraries=self.xml_material_libraries,
                 combined_user_assets=self._get_all_assets(),
             )
+
+            # Add region materials to context if available
+            if region_materials:
+                ctx.region_materials = region_materials
 
             # Execute all resources using DAG executor
             results = self.executor.execute(ctx)

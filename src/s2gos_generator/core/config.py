@@ -177,10 +177,19 @@ class ProcessingOptions(BaseModel):
 
 
 class ThermophysicalConfig(BaseModel):
-    """Configuration for atmospheric thermophysical properties using joseki."""
+    """Configuration for atmospheric thermophysical properties.
 
-    identifier: str = Field(
-        "afgl_1986-us_standard", description="Standard atmosphere identifier"
+    Supports either joseki identifiers (e.g., 'afgl_1986-us_standard') or
+    CAMS NetCDF files. Specify one but not both.
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    identifier: Optional[str] = Field(
+        "afgl_1986-us_standard", description="Standard atmosphere identifier (joseki)"
+    )
+    thermoprops_file: Optional[UPath] = Field(
+        None, description="Path to CAMS thermoprops NetCDF file (alternative to identifier)"
     )
     altitude_min: float = Field(0.0, ge=0.0, description="Minimum altitude in meters")
     altitude_max: float = Field(
@@ -196,6 +205,23 @@ class ThermophysicalConfig(BaseModel):
         """Validate altitude configuration."""
         if self.altitude_max <= self.altitude_min:
             raise ValueError("Maximum altitude must be greater than minimum altitude")
+        return self
+
+    @model_validator(mode="after")
+    def validate_thermoprops_source(self):
+        """Ensure exactly one thermoprops source is specified."""
+        has_identifier = self.identifier is not None
+        has_file = self.thermoprops_file is not None
+
+        if has_identifier and has_file:
+            raise ValueError(
+                "Specify either 'identifier' (joseki) OR 'thermoprops_file' (CAMS NetCDF), not both"
+            )
+        if not has_identifier and not has_file:
+            raise ValueError(
+                "Must specify either 'identifier' (joseki) OR 'thermoprops_file' (CAMS NetCDF)"
+            )
+
         return self
 
 
@@ -306,7 +332,9 @@ DistributionType = Union[
 class ParticleLayerConfig(BaseModel):
     """Enhanced particle layer configuration."""
 
-    aerosol_dataset: AerosolDataset = Field(..., description="Aerosol dataset to use")
+    aerosol_dataset: Union[AerosolDataset, str] = Field(
+        ..., description="Aerosol dataset: enum value (e.g. 'sixsv-continental') or custom NetCDF path"
+    )
     optical_thickness: float = Field(
         ..., ge=0.0, description="Aerosol optical thickness"
     )
@@ -319,6 +347,23 @@ class ParticleLayerConfig(BaseModel):
         550.0, gt=0.0, description="Reference wavelength in nm"
     )
     has_absorption: bool = Field(True, description="Enable absorption by particles")
+
+    @field_validator("aerosol_dataset")
+    @classmethod
+    def validate_aerosol_dataset(cls, v):
+        """Allow enum or custom file path string."""
+        if isinstance(v, AerosolDataset):
+            return v.value
+        elif isinstance(v, str):
+            # Check if it's a valid enum value
+            try:
+                return AerosolDataset(v).value
+            except ValueError:
+                # Custom path - validate .nc extension
+                if not v.endswith('.nc'):
+                    raise ValueError(f"Custom aerosol dataset must be NetCDF file (.nc): {v}")
+                return v
+        raise ValueError(f"aerosol_dataset must be AerosolDataset enum or str, got {type(v)}")
 
     @model_validator(mode="after")
     def validate_altitude_range(self):

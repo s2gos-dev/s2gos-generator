@@ -56,7 +56,7 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
 
         center_lat = ctx.center_lat
         center_lon = ctx.center_lon
-        proj_string = f"+proj=omerc +lat_0={center_lat} +lonc={center_lon} +alpha=0 +k=1 +x_0=0 +y_0=0 +R=6371000 +units=m +no_defs"
+        proj_string = f"+proj=omerc +lat_0={center_lat} +lonc={center_lon} +alpha=0 +gamma=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +units=m"
 
         albedo_data = albedo_data.transpose("wavelength", "latitude", "longitude")
         albedo_data = albedo_data.rio.set_spatial_dims(

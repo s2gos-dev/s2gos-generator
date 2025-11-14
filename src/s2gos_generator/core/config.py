@@ -409,10 +409,9 @@ class HamsterConfig(BaseModel):
     @classmethod
     def validate_data_path(cls, v):
         """Validate HAMSTER data file exists."""
-        v = UPath(v)
-        if not exists(v):
-            raise ValueError(f"HAMSTER data file not found: {v}")
-        return v
+        v_str = str(v)
+        resolved = _resolve_asset_path(v_str, asset_type="netCDF")
+        return UPath(resolved)
 
 
 class UserAssets(BaseModel):

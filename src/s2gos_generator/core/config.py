@@ -62,48 +62,21 @@ class SceneLocation(BaseModel):
     )
 
 
-def _load_default_data_sources_config() -> Dict[str, Any]:
-    """Load default paths from defaults.yaml file and augment global resolver.
+def _load_settings_data_sources_config() -> Dict[str, Any]:
+    """Load paths from s2gos_settings.toml file and augment global resolver.
 
     This function serves dual purpose:
-    1. Load default data source paths (DEM, landcover, materials)
+    1. Load data source paths (DEM, landcover, materials) from the settings file.
     2. Augment the global resolver with custom asset search paths
-
-    The defaults file location can be overridden using the S2GOS_DEFAULTS_PATH
-    environment variable. If not set, uses the package's defaults.yaml file.
     """
-    package_root = importlib.resources.files("s2gos_generator")
-    defaults_path = package_root / "defaults.yaml"
+    from ..setting import settings
 
-    env_path = os.getenv("S2GOS_GEN_DEFAULTS_PATH")
-    if env_path:
-        defaults_path = UPath(env_path)
-        if not exists(defaults_path):
-            return {}
-        defaults = read_yaml(defaults_path)
-    else:
-        if not exists(defaults_path):
-            return {}
-        defaults = read_yaml(defaults_path)
+    data_settings = settings.generator.data.to_dict()
 
-    asset_paths = defaults.get("asset_search_paths", [])
-    if asset_paths:
-        for path in asset_paths:
-            # Skip {PACKAGE_DATA} placeholder - already in global resolver
-            if "{PACKAGE_DATA}" in path:
-                continue
-            upath = UPath(path)
-            if upath.exists():
-                try:
-                    resolver.append(str(upath))
-                except Exception:
-                    pass
+    for key, value in data_settings.items():
+        data_settings[key] = str(resolver.resolve(value, strict=True))
 
-    for key, value in defaults.items():
-        if key != "asset_search_paths":
-            defaults[key] = str(resolver.resolve(value, strict=True))
-
-    return defaults
+    return data_settings
 
 
 def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
@@ -167,8 +140,8 @@ class DataSources(BaseModel):
         if not isinstance(data, dict):
             # Let Pydantic handle validation for non-dictionary inputs.
             return data
-
-        default_config = _load_default_data_sources_config()
+        
+        default_config = _load_settings_data_sources_config()
         default_config.update(data)
         return default_config
 

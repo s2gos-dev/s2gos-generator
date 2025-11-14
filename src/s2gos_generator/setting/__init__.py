@@ -1,6 +1,5 @@
-from ._settings import settings, gen_settings
+from ._settings import settings
 
 __all__ = [
     "settings",
-    "gen_settings",
 ]

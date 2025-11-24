@@ -107,7 +107,7 @@ class SceneGenerationPipeline:
             )
 
         # Optional resources
-        if self.config.user_assets:
+        if self.config.user_assets or self.xml_assets:
             self.registry.register("user_assets", ["target_dem"], process_user_assets)
 
         if self.config.hamster and self.config.hamster.enabled:
@@ -157,8 +157,10 @@ class SceneGenerationPipeline:
                 elevation_offset=xml_scene_config.elevation_offset,
                 scale=xml_scene_config.scale,
                 fix_blender_coords=xml_scene_config.fix_blender_coords,
+                rotation_x=xml_scene_config.rotation_x,
+                rotation_y=xml_scene_config.rotation_y,
+                rotation_z=xml_scene_config.rotation_z,
                 material_mappings=xml_scene_config.material_mappings,
-                pattern_type=xml_scene_config.pattern_type,
                 validate_materials=xml_scene_config.validate_materials,
             )
 

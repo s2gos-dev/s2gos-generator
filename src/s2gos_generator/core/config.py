@@ -605,6 +605,56 @@ class MaterialRegion(BaseModel):
         return v
 
 
+class MaterialMapping(BaseModel):
+    """Material mapping for XML assets.
+
+    Maps mesh filenames to material IDs using pattern matching.
+
+    Attributes:
+        pattern: Filename pattern to match (without .ply extension)
+        material: Material ID to assign to matching meshes
+        mode: Pattern matching mode ('glob' or 'regex')
+    """
+    pattern: str = Field(
+        ...,
+        description="Filename pattern to match (e.g., 'vegetation_*' or 'tree_.*')"
+    )
+    material: str = Field(
+        ...,
+        description="Material ID to assign to matching meshes"
+    )
+    mode: Literal["glob", "regex"] = Field(
+        default="glob",
+        description="Pattern matching mode: 'glob' for wildcards (* and ?), 'regex' for regular expressions"
+    )
+
+    @field_validator("pattern")
+    @classmethod
+    def validate_pattern(cls, v: str) -> str:
+        """Validate pattern is non-empty."""
+        if not v or not v.strip():
+            raise ValueError(
+                "Pattern cannot be empty.\n"
+                "Examples:\n"
+                "  - Glob: 'vegetation_*', 'tree_?', '*_ground'\n"
+                "  - Regex: r'tree_\\d+', r'(oak|pine)_.*'"
+            )
+        return v.strip()
+
+    @field_validator("material")
+    @classmethod
+    def validate_material(cls, v: str) -> str:
+        """Validate material reference is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("Material ID cannot be empty")
+        return v.strip()
+
+    model_config = {
+        "validate_assignment": True,
+        "extra": "forbid",
+    }
+
+
 class XmlSceneConfig(BaseModel):
     """Configuration for importing assets and materials from XML scene files."""
 
@@ -622,13 +672,20 @@ class XmlSceneConfig(BaseModel):
         1.0, gt=0.0, description="Global scaling factor for all assets"
     )
     fix_blender_coords: bool = Field(
-        True, description="Apply Blender coordinate system correction"
+        True, description="Apply Blender coordinate system correction (90° rotation around X-axis)"
     )
-    material_mappings: Optional[Dict[str, str]] = Field(
-        None, description="Material name mapping dictionary"
+    rotation_x: float = Field(
+        0.0, description="Global rotation around X-axis in degrees (applied after fix_blender_coords)"
     )
-    pattern_type: str = Field(
-        "wildcard", description="Pattern matching type for materials"
+    rotation_y: float = Field(
+        0.0, description="Global rotation around Y-axis in degrees (applied after fix_blender_coords)"
+    )
+    rotation_z: float = Field(
+        0.0, description="Global rotation around Z-axis in degrees (applied after fix_blender_coords)"
+    )
+    material_mappings: list[MaterialMapping] = Field(
+        default_factory=list,
+        description="List of material mappings for mesh filename patterns"
     )
     validate_materials: bool = Field(
         True, description="Validate that all materials are properly defined"
@@ -653,15 +710,6 @@ class XmlSceneConfig(BaseModel):
             raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
         if not (-90 <= lat <= 90):
             raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
-        return v
-
-    @field_validator("pattern_type")
-    @classmethod
-    def validate_pattern_type(cls, v):
-        """Validate pattern type is supported."""
-        valid_types = {"wildcard", "exact", "contains"}
-        if v not in valid_types:
-            raise ValueError(f"Pattern type must be one of: {valid_types}")
         return v
 
     model_config = {
@@ -1282,8 +1330,10 @@ def load_assets_from_xml(
     elevation_offset: float = 0.0,
     scale: float = 1.0,
     fix_blender_coords: bool = True,
-    material_mappings: Optional[Dict[str, str]] = None,
-    pattern_type: str = "wildcard",
+    rotation_x: float = 0.0,
+    rotation_y: float = 0.0,
+    rotation_z: float = 0.0,
+    material_mappings: Optional[List["MaterialMapping"]] = None,
     validate_materials: bool = True,
 ) -> Tuple[List[UserAssets], Dict[str, Dict[str, Any]]]:
     """Load multi-material assets from Mitsuba XML with material library.
@@ -1295,8 +1345,10 @@ def load_assets_from_xml(
         elevation_offset: Height offset above terrain (meters)
         scale: Uniform scaling factor
         fix_blender_coords: Apply Blender→Mitsuba coordinate correction (90° X rotation)
-        material_mappings: Dict mapping filename patterns to S2GOS material names
-        pattern_type: "wildcard", "exact", or "contains" matching for material_mappings
+        rotation_x: Global rotation around X-axis in degrees (applied after fix_blender_coords)
+        rotation_y: Global rotation around Y-axis in degrees (applied after fix_blender_coords)
+        rotation_z: Global rotation around Z-axis in degrees (applied after fix_blender_coords)
+        material_mappings: List of MaterialMapping objects for pattern-based material assignment
         validate_materials: If True, validate material references and PLY file existence
 
     Returns:
@@ -1304,18 +1356,19 @@ def load_assets_from_xml(
         - assets_list: List of UserAssets with string material references
         - material_library: Dict of material definitions to embed in scene
 
-    Example:
-        assets, materials = load_assets_from_xml(
-            "fence.xml",
-            base_coordinate=[15.1258741, -23.6015431],
-            material_mappings={
-                "Post_*": "concrete",  # Reference to scene material library
-                "*Wire*": "metal_wire", # Will use XML material if available
-            }
-        )
     """
-    # Import using new XML importer
     from ..assets.xml_importer import import_xml_assets
+
+    material_mappings_dicts = None
+    if material_mappings:
+        material_mappings_dicts = [
+            {
+                "pattern": mapping.pattern,
+                "material": mapping.material,
+                "mode": mapping.mode
+            }
+            for mapping in material_mappings
+        ]
 
     asset_data_list, material_library = import_xml_assets(
         xml_path=xml_path,
@@ -1324,25 +1377,31 @@ def load_assets_from_xml(
         elevation_offset=elevation_offset,
         scale=scale,
         fix_blender_coords=fix_blender_coords,
-        material_mappings=material_mappings,
-        pattern_type=pattern_type,
+        rotation_x=rotation_x,
+        rotation_y=rotation_y,
+        rotation_z=rotation_z,
+        material_mappings=material_mappings_dicts,
         validate_materials=validate_materials,
     )
 
-    # Convert asset data to UserAssets objects
     assets = []
     for asset_data in asset_data_list:
-        asset = UserAssets(
-            object_id=asset_data["object_id"],
-            ply_path=UPath(asset_data["ply_path"]),
-            coordinate=asset_data["coordinate"],
-            material=asset_data["material"],  # Now guaranteed to be string reference
-            elevation_offset=asset_data["elevation_offset"],
-            scale=asset_data["scale"],
-            rotation_x=asset_data["rotation_x"],
-            rotation_y=asset_data["rotation_y"],
-            rotation_z=asset_data["rotation_z"],
-        )
+        asset_kwargs = {
+            "object_id": asset_data["object_id"],
+            "ply_path": UPath(asset_data["ply_path"]),
+            "coordinate": asset_data["coordinate"],
+            "material": asset_data["material"],
+            "elevation_offset": asset_data["elevation_offset"],
+            "scale": asset_data["scale"],
+            "rotation_x": asset_data["rotation_x"],
+            "rotation_y": asset_data["rotation_y"],
+            "rotation_z": asset_data["rotation_z"],
+        }
+
+        if "face_normals" in asset_data:
+            asset_kwargs["face_normals"] = asset_data["face_normals"]
+
+        asset = UserAssets(**asset_kwargs)
         assets.append(asset)
 
     return assets, material_library

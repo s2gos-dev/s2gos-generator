@@ -12,6 +12,8 @@ The configuration structure depends on your installation:
 ## Configuration Example
 
 ```toml
+# s2gos_settings.toml
+# -----------------------------------------
 [common]
 # List of directories for resolving relative file paths (searched in order)
 search_paths = [

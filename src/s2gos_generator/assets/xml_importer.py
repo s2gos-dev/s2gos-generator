@@ -3,7 +3,7 @@ import logging
 import re
 import shutil
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from s2gos_utils.io.paths import exists
 from s2gos_utils.scene.materials.spectrum import (
@@ -82,9 +82,7 @@ def import_xml_assets(
     xml_data = _parse_xml(xml_path)
     material_library = _convert_materials(xml_data["materials"], xml_path)
 
-    logging.info(
-        f"Successfully converted {len(material_library)} materials from XML"
-    )
+    logging.info(f"Successfully converted {len(material_library)} materials from XML")
 
     assets = []
 
@@ -125,8 +123,12 @@ def import_xml_assets(
             # After 90° X rotation: Y-axis becomes up (world Z), Z-axis becomes -Y (world)
             # Swap user's Y/Z rotations to maintain intuitive behavior
             final_rotation_x = 90.0 + rotation_x
-            final_rotation_y = rotation_z  # User's Z rotation → Y-axis (now up in rotated frame)
-            final_rotation_z = -rotation_y  # User's Y rotation → -Z-axis (negated due to flip)
+            final_rotation_y = (
+                rotation_z  # User's Z rotation → Y-axis (now up in rotated frame)
+            )
+            final_rotation_z = (
+                -rotation_y
+            )  # User's Y rotation → -Z-axis (negated due to flip)
         else:
             # No coordinate fix: rotations are straightforward
             final_rotation_x = rotation_x
@@ -153,9 +155,7 @@ def import_xml_assets(
     if validate_materials:
         _validate_assets(assets, material_library)
 
-    logging.info(
-        f"Successfully imported {len(assets)} assets from {xml_path}"
-    )
+    logging.info(f"Successfully imported {len(assets)} assets from {xml_path}")
 
     return assets, material_library
 
@@ -220,9 +220,7 @@ def _parse_xml(xml_path: str) -> Dict[str, Any]:
         if filename_elem is not None:
             filename = filename_elem.get("value")
             if not filename:
-                logging.warning(
-                    f"Shape in {xml_path} has empty filename. Skipping."
-                )
+                logging.warning(f"Shape in {xml_path} has empty filename. Skipping.")
                 continue
 
             material_ref = shape.find('./ref[@name="bsdf"]')
@@ -307,21 +305,27 @@ def _parse_property(element) -> Any:
                 )
                 return [0.5, 0.5, 0.5]
         except (ValueError, IndexError):
-            logging.warning(f"Failed to parse RGB value '{value}'. Using default [0.5, 0.5, 0.5].")
+            logging.warning(
+                f"Failed to parse RGB value '{value}'. Using default [0.5, 0.5, 0.5]."
+            )
             return [0.5, 0.5, 0.5]
 
     elif tag == "float":
         try:
             return float(value)
         except ValueError:
-            logging.warning(f"Failed to parse float value '{value}'. Using default 0.0.")
+            logging.warning(
+                f"Failed to parse float value '{value}'. Using default 0.0."
+            )
             return 0.0
 
     elif tag == "integer":
         try:
             return int(value)
         except ValueError:
-            logging.warning(f"Failed to parse integer value '{value}'. Using default 0.")
+            logging.warning(
+                f"Failed to parse integer value '{value}'. Using default 0."
+            )
             return 0
 
     elif tag == "boolean":
@@ -380,9 +384,9 @@ def _parse_spectrum_element(element) -> Any:
             return 0.5
 
         # Inline wavelength:value pairs format: "400:0.56, 500:0.18, 600:0.58"
-        if ':' in value:
+        if ":" in value:
             try:
-                pairs = [p.strip().split(':') for p in value.split(',')]
+                pairs = [p.strip().split(":") for p in value.split(",")]
                 wavelengths = [float(p[0].strip()) for p in pairs]
                 values_list = [float(p[1].strip()) for p in pairs]
 
@@ -415,7 +419,7 @@ def _parse_spectrum_element(element) -> Any:
                 return {
                     "type": "interpolated",
                     "wavelengths": wavelengths,
-                    "values": values_list
+                    "values": values_list,
                 }
 
             except (ValueError, IndexError) as e:
@@ -438,7 +442,9 @@ def _parse_spectrum_element(element) -> Any:
             return {"file": filename}
 
         if not value:
-            logging.warning("Spectrum element has no value or filename. Using default 0.5.")
+            logging.warning(
+                "Spectrum element has no value or filename. Using default 0.5."
+            )
             return 0.5
 
         try:
@@ -447,9 +453,9 @@ def _parse_spectrum_element(element) -> Any:
         except ValueError:
             pass
 
-        if ':' in value:
+        if ":" in value:
             try:
-                pairs = [p.strip().split(':') for p in value.split(',')]
+                pairs = [p.strip().split(":") for p in value.split(",")]
                 wavelengths = [float(p[0].strip()) for p in pairs]
                 values_list = [float(p[1].strip()) for p in pairs]
 
@@ -482,7 +488,7 @@ def _parse_spectrum_element(element) -> Any:
                 return {
                     "type": "interpolated",
                     "wavelengths": wavelengths,
-                    "values": values_list
+                    "values": values_list,
                 }
 
             except (ValueError, IndexError) as e:
@@ -578,22 +584,24 @@ def convert_diffuse(props: Dict[str, Any], xml_dir=None) -> Dict[str, Any]:
                 )
 
             logging.debug(f"Using file-based spectrum: {file_path}")
-            spectrum_spec = FileSpectrum(
-                path=str(file_path),
-                variable="reflectance"
-            )
+            spectrum_spec = FileSpectrum(path=str(file_path), variable="reflectance")
 
-        elif isinstance(reflectance, dict) and reflectance.get("type") == "interpolated":
+        elif (
+            isinstance(reflectance, dict) and reflectance.get("type") == "interpolated"
+        ):
             logging.debug(
                 f"Using interpolated spectrum: {len(reflectance['wavelengths'])} wavelength points"
             )
             spectrum_spec = InterpolatedSpectrum(
-                wavelengths=reflectance["wavelengths"],
-                values=reflectance["values"]
+                wavelengths=reflectance["wavelengths"], values=reflectance["values"]
             )
 
         elif isinstance(reflectance, (list, tuple, int, float)):
-            value = list(reflectance) if isinstance(reflectance, (list, tuple)) else float(reflectance)
+            value = (
+                list(reflectance)
+                if isinstance(reflectance, (list, tuple))
+                else float(reflectance)
+            )
             spectrum_spec = UniformSpectrum(value=value)
 
         else:
@@ -877,9 +885,7 @@ def _ensure_list(value: Any) -> List[float]:
         return [0.5, 0.5, 0.5]
 
 
-def _match_filename(
-    filename: str, pattern: str, mode: str = "glob"
-) -> bool:
+def _match_filename(filename: str, pattern: str, mode: str = "glob") -> bool:
     """Check if filename matches pattern using specified matching strategy.
 
     Args:

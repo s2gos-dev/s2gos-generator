@@ -236,7 +236,11 @@ class SceneGenerationPipeline:
 
         try:
             # Collect region materials if defined
-            region_materials = self.config.region_material_defs if self.config.region_material_defs else None
+            region_materials = (
+                self.config.region_material_defs
+                if self.config.region_material_defs
+                else None
+            )
 
             ctx = SceneResourceContext(
                 config=self.config,
@@ -250,7 +254,7 @@ class SceneGenerationPipeline:
 
             # Execute all resources using DAG executor
             results = self.executor.execute(ctx)
-
+            print(f"{results = }")
             scene_description = getattr(ctx, "scene_description", None)
             if scene_description is None:
                 raise RuntimeError("Scene description not found in pipeline results")

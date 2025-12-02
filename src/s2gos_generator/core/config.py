@@ -7,7 +7,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
-from s2gos_utils.io.paths import exists, open_file, read_yaml
+from s2gos_utils.io.paths import exists, open_file
 from s2gos_utils.io.resolver import resolver
 from s2gos_utils.typing import PathLike
 from upath import UPath
@@ -139,7 +139,7 @@ class DataSources(BaseModel):
         if not isinstance(data, dict):
             # Let Pydantic handle validation for non-dictionary inputs.
             return data
-        
+
         default_config = _load_settings_data_sources_config()
         default_config.update(data)
         return default_config
@@ -189,7 +189,8 @@ class ThermophysicalConfig(BaseModel):
         "afgl_1986-us_standard", description="Standard atmosphere identifier (joseki)"
     )
     thermoprops_file: Optional[UPath] = Field(
-        None, description="Path to CAMS thermoprops NetCDF file (alternative to identifier)"
+        None,
+        description="Path to CAMS thermoprops NetCDF file (alternative to identifier)",
     )
     altitude_min: float = Field(0.0, ge=0.0, description="Minimum altitude in meters")
     altitude_max: float = Field(
@@ -333,7 +334,8 @@ class ParticleLayerConfig(BaseModel):
     """Enhanced particle layer configuration."""
 
     aerosol_dataset: Union[AerosolDataset, str] = Field(
-        ..., description="Aerosol dataset: enum value (e.g. 'sixsv-continental') or custom NetCDF path"
+        ...,
+        description="Aerosol dataset: enum value (e.g. 'sixsv-continental') or custom NetCDF path",
     )
     optical_thickness: float = Field(
         ..., ge=0.0, description="Aerosol optical thickness"
@@ -360,10 +362,14 @@ class ParticleLayerConfig(BaseModel):
                 return AerosolDataset(v).value
             except ValueError:
                 # Custom path - validate .nc extension
-                if not v.endswith('.nc'):
-                    raise ValueError(f"Custom aerosol dataset must be NetCDF file (.nc): {v}")
+                if not v.endswith(".nc"):
+                    raise ValueError(
+                        f"Custom aerosol dataset must be NetCDF file (.nc): {v}"
+                    )
                 return v
-        raise ValueError(f"aerosol_dataset must be AerosolDataset enum or str, got {type(v)}")
+        raise ValueError(
+            f"aerosol_dataset must be AerosolDataset enum or str, got {type(v)}"
+        )
 
     @model_validator(mode="after")
     def validate_altitude_range(self):
@@ -569,7 +575,7 @@ class MaterialRegion(BaseModel):
         if not v or not v.strip():
             raise ValueError("region_id cannot be empty")
         # Check for filesystem-safe characters
-        if any(char in v for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
+        if any(char in v for char in ["/", "\\", ":", "*", "?", '"', "<", ">", "|"]):
             raise ValueError(
                 f"region_id '{v}' contains invalid characters for filesystem paths"
             )
@@ -615,17 +621,14 @@ class MaterialMapping(BaseModel):
         material: Material ID to assign to matching meshes
         mode: Pattern matching mode ('glob' or 'regex')
     """
+
     pattern: str = Field(
-        ...,
-        description="Filename pattern to match (e.g., 'vegetation_*' or 'tree_.*')"
+        ..., description="Filename pattern to match (e.g., 'vegetation_*' or 'tree_.*')"
     )
-    material: str = Field(
-        ...,
-        description="Material ID to assign to matching meshes"
-    )
+    material: str = Field(..., description="Material ID to assign to matching meshes")
     mode: Literal["glob", "regex"] = Field(
         default="glob",
-        description="Pattern matching mode: 'glob' for wildcards (* and ?), 'regex' for regular expressions"
+        description="Pattern matching mode: 'glob' for wildcards (* and ?), 'regex' for regular expressions",
     )
 
     @field_validator("pattern")
@@ -672,20 +675,24 @@ class XmlSceneConfig(BaseModel):
         1.0, gt=0.0, description="Global scaling factor for all assets"
     )
     fix_blender_coords: bool = Field(
-        True, description="Apply Blender coordinate system correction (90° rotation around X-axis)"
+        True,
+        description="Apply Blender coordinate system correction (90° rotation around X-axis)",
     )
     rotation_x: float = Field(
-        0.0, description="Global rotation around X-axis in degrees (applied after fix_blender_coords)"
+        0.0,
+        description="Global rotation around X-axis in degrees (applied after fix_blender_coords)",
     )
     rotation_y: float = Field(
-        0.0, description="Global rotation around Y-axis in degrees (applied after fix_blender_coords)"
+        0.0,
+        description="Global rotation around Y-axis in degrees (applied after fix_blender_coords)",
     )
     rotation_z: float = Field(
-        0.0, description="Global rotation around Z-axis in degrees (applied after fix_blender_coords)"
+        0.0,
+        description="Global rotation around Z-axis in degrees (applied after fix_blender_coords)",
     )
     material_mappings: list[MaterialMapping] = Field(
         default_factory=list,
-        description="List of material mappings for mesh filename patterns"
+        description="List of material mappings for mesh filename patterns",
     )
     validate_materials: bool = Field(
         True, description="Validate that all materials are properly defined"
@@ -915,7 +922,9 @@ class SceneGenConfig(BaseModel):
 
     location: SceneLocation = Field(..., description="Geographic location")
     data_sources: DataSources = Field(..., description="Data source configuration")
-    output_dir: PathLike = Field(..., description="Output directory for generated scene")
+    output_dir: PathLike = Field(
+        ..., description="Output directory for generated scene"
+    )
     processing: ProcessingOptions = Field(
         default_factory=ProcessingOptions, description="Processing options"
     )
@@ -952,12 +961,10 @@ class SceneGenConfig(BaseModel):
         [], description="XML scene files to import for additional assets and materials"
     )
     material_regions: list[MaterialRegion] = Field(
-        [],
-        description="Material regions for spatially-selective material overrides"
+        [], description="Material regions for spatially-selective material overrides"
     )
     region_material_defs: Dict[str, Dict[str, Any]] = Field(
-        default_factory=dict,
-        description="Material definitions for region materials"
+        default_factory=dict, description="Material definitions for region materials"
     )
     vegetation_placement: Optional[VegetationPlacementConfig] = Field(
         None,
@@ -1365,7 +1372,7 @@ def load_assets_from_xml(
             {
                 "pattern": mapping.pattern,
                 "material": mapping.material,
-                "mode": mapping.mode
+                "mode": mapping.mode,
             }
             for mapping in material_mappings
         ]

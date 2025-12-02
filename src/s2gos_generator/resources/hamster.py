@@ -64,7 +64,6 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
         )
         albedo_data = albedo_data.rio.write_crs("EPSG:4326")
 
-        albedo_original = albedo_data.copy()
         albedo_projected = albedo_data.rio.reproject(proj_string)
 
         correct_y_coords = np.flip(albedo_projected.y.values)

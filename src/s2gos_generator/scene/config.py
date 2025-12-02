@@ -39,7 +39,9 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
         }
 
         if mol_config.thermoprops.thermoprops_file:
-            mol_atm_dict["thermoprops_file"] = str(mol_config.thermoprops.thermoprops_file)
+            mol_atm_dict["thermoprops_file"] = str(
+                mol_config.thermoprops.thermoprops_file
+            )
         else:
             mol_atm_dict["thermoprops_identifier"] = mol_config.thermoprops.identifier
 
@@ -82,9 +84,13 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
             }
 
             if mol_config.thermoprops.thermoprops_file:
-                mol_atm_dict["thermoprops_file"] = str(mol_config.thermoprops.thermoprops_file)
+                mol_atm_dict["thermoprops_file"] = str(
+                    mol_config.thermoprops.thermoprops_file
+                )
             else:
-                mol_atm_dict["thermoprops_identifier"] = mol_config.thermoprops.identifier
+                mol_atm_dict["thermoprops_identifier"] = (
+                    mol_config.thermoprops.identifier
+                )
 
             base_dict["molecular_atmosphere"] = mol_atm_dict
 
@@ -204,7 +210,9 @@ def create_s2gos_scene(
         for material_name, texture_index in region_material_indices.items():
             if material_name not in material_indices.values():
                 material_indices[texture_index] = material_name
-                logging.info(f"Added region material '{material_name}' with texture index {texture_index}")
+                logging.info(
+                    f"Added region material '{material_name}' with texture index {texture_index}"
+                )
 
     target = {
         "mesh": mesh_path,
@@ -308,7 +316,9 @@ def create_s2gos_scene(
 
     inline_materials = kwargs.get("inline_materials", {})
     if inline_materials:
-        logging.info(f"Adding {len(inline_materials)} inline material definitions from UserAssets")
+        logging.info(
+            f"Adding {len(inline_materials)} inline material definitions from UserAssets"
+        )
         for mat_id, mat_def in inline_materials.items():
             if mat_id in materials:
                 logging.warning(

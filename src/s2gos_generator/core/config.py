@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib.resources
 import json
-import os
 from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
@@ -11,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
 from s2gos_utils.io.paths import exists, open_file, read_yaml
 from s2gos_utils.io.resolver import resolver
+from s2gos_utils.typing import PathLike
 from upath import UPath
 
 from .._version import get_version
@@ -367,7 +366,7 @@ class HamsterConfig(BaseModel):
     """HAMSTER albedo data configuration for baresoil material replacement."""
 
     enabled: bool = Field(True, description="Enable HAMSTER albedo for baresoil")
-    data_path: UPath = Field(..., description="Path to HAMSTER NetCDF data file")
+    data_path: PathLike = Field(..., description="Path to HAMSTER NetCDF data file")
     variable_name: str = Field("albedo", description="Variable name in NetCDF file")
     fallback_on_error: bool = Field(
         True, description="Fall back to standard baresoil material on errors"
@@ -375,7 +374,6 @@ class HamsterConfig(BaseModel):
 
     model_config = {
         "arbitrary_types_allowed": True,
-        "json_encoders": {UPath: lambda v: str(v)},
     }
 
     @field_validator("data_path", mode="before")
@@ -391,7 +389,7 @@ class UserAssets(BaseModel):
     """User assets to be placed on scene."""
 
     object_id: str = Field(..., description="Unique identifier for the object")
-    ply_path: UPath = Field(
+    ply_path: PathLike = Field(
         ..., description="Path to PLY file containing 3D object geometry"
     )
     coordinate: list[float] = Field(
@@ -476,7 +474,6 @@ class UserAssets(BaseModel):
 
     model_config = {
         "arbitrary_types_allowed": True,
-        "json_encoders": {UPath: lambda v: str(v)},
         "validate_assignment": True,
         "extra": "forbid",
     }
@@ -566,7 +563,7 @@ class MaterialRegion(BaseModel):
 class XmlSceneConfig(BaseModel):
     """Configuration for importing assets and materials from XML scene files."""
 
-    xml_path: UPath = Field(..., description="Path to XML scene file")
+    xml_path: PathLike = Field(..., description="Path to XML scene file")
     base_coordinate: Tuple[float, float] = Field(
         ..., description="Base geographic coordinate [longitude, latitude]"
     )
@@ -624,7 +621,6 @@ class XmlSceneConfig(BaseModel):
 
     model_config = {
         "arbitrary_types_allowed": True,
-        "json_encoders": {UPath: lambda v: str(v)},
         "validate_assignment": True,
         "extra": "forbid",
     }
@@ -826,7 +822,7 @@ class SceneGenConfig(BaseModel):
 
     location: SceneLocation = Field(..., description="Geographic location")
     data_sources: DataSources = Field(..., description="Data source configuration")
-    output_dir: UPath = Field(..., description="Output directory for generated scene")
+    output_dir: PathLike = Field(..., description="Output directory for generated scene")
     processing: ProcessingOptions = Field(
         default_factory=ProcessingOptions, description="Processing options"
     )
@@ -882,7 +878,7 @@ class SceneGenConfig(BaseModel):
         "validate_assignment": True,
         "extra": "forbid",
         "arbitrary_types_allowed": True,
-        "json_encoders": {datetime: lambda v: v.isoformat(), UPath: lambda v: str(v)},
+        "json_encoders": {datetime: lambda v: v.isoformat()},
     }
 
     @field_validator("output_dir")
@@ -915,7 +911,7 @@ class SceneGenConfig(BaseModel):
         """Convert to dictionary for serialization."""
         return self.model_dump()
 
-    def to_json(self, path: Optional[UPath] = None, indent: int = 2) -> str:
+    def to_json(self, path: Optional[PathLike] = None, indent: int = 2) -> str:
         """Export to JSON format."""
         json_str = self.model_dump_json(indent=indent)
         if path:
@@ -924,7 +920,7 @@ class SceneGenConfig(BaseModel):
         return json_str
 
     @classmethod
-    def from_json(cls, path: UPath) -> "SceneGenConfig":
+    def from_json(cls, path: PathLike) -> "SceneGenConfig":
         """Load from JSON file with version compatibility checking."""
         with open_file(path, "r") as f:
             data = json.load(f)
@@ -934,6 +930,7 @@ class SceneGenConfig(BaseModel):
 
         if (
             "hamster" in data
+            and data["hamster"]
             and "data_path" in data["hamster"]
             and isinstance(data["hamster"]["data_path"], str)
         ):
@@ -948,7 +945,7 @@ class SceneGenConfig(BaseModel):
 
     def enable_hamster_albedo(
         self,
-        data_path: UPath,
+        data_path: PathLike,
         variable_name: str = "albedo",
         fallback_on_error: bool = True,
     ):
@@ -1020,22 +1017,22 @@ class SceneGenConfig(BaseModel):
         return errors
 
     @property
-    def scene_output_dir(self) -> UPath:
+    def scene_output_dir(self) -> PathLike:
         """Get the specific output directory for this scene."""
         return self.output_dir / self.scene_name
 
     @property
-    def meshes_dir(self) -> UPath:
+    def meshes_dir(self) -> PathLike:
         """Get the meshes output directory."""
         return self.scene_output_dir / "meshes"
 
     @property
-    def textures_dir(self) -> UPath:
+    def textures_dir(self) -> PathLike:
         """Get the textures output directory."""
         return self.scene_output_dir / "textures"
 
     @property
-    def data_dir(self) -> UPath:
+    def data_dir(self) -> PathLike:
         """Get the data output directory."""
         return self.scene_output_dir / "data"
 
@@ -1055,7 +1052,7 @@ def create_scene_config(
     center_lat: float,
     center_lon: float,
     aoi_size_km: float,
-    output_dir: UPath,
+    output_dir: PathLike,
     target_resolution_m: float = 30.0,
     description: Optional[str] = None,
     data_overrides: Optional[dict] = None,

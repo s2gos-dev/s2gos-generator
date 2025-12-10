@@ -473,9 +473,9 @@ class UserAssets(BaseModel):
         return None
 
     model_config = {
-        "arbitrary_types_allowed": True,
+        # "arbitrary_types_allowed": True,
         "validate_assignment": True,
-        "extra": "forbid",
+        # "extra": "forbid",
     }
 
 
@@ -622,7 +622,7 @@ class XmlSceneConfig(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True,
         "validate_assignment": True,
-        "extra": "forbid",
+        # "extra": "forbid",
     }
 
 
@@ -714,7 +714,7 @@ class VegetationSpecies(BaseModel):
 
     model_config = {
         "validate_assignment": True,
-        "extra": "forbid",
+        # "extra": "forbid",
     }
 
 
@@ -801,7 +801,7 @@ class VegetationPlacementConfig(BaseModel):
 
     model_config = {
         "validate_assignment": True,
-        "extra": "forbid",
+        # "extra": "forbid",
     }
 
 
@@ -876,7 +876,7 @@ class SceneGenConfig(BaseModel):
 
     model_config = {
         "validate_assignment": True,
-        "extra": "forbid",
+        # "extra": "forbid",
         "arbitrary_types_allowed": True,
         "json_encoders": {datetime: lambda v: v.isoformat()},
     }

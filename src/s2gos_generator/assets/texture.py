@@ -256,50 +256,6 @@ class TextureGenerator:
             "class_mapping": self.class_to_index,
         }
 
-    def analyze_landcover_classes(self, landcover_data: xr.DataArray) -> Dict:
-        """
-        Analyzes the land cover data to show class distribution.
-
-        Args:
-            landcover_data: xarray DataArray containing land cover class values.
-
-        Returns:
-            Dictionary with class statistics.
-        """
-        landcover_data.load()
-        class_values = landcover_data.values
-
-        unique_classes, counts = np.unique(class_values, return_counts=True)
-        total_pixels = class_values.size
-
-        class_stats = {}
-        for cls, count in zip(unique_classes, counts):
-            if np.isnan(cls):
-                logging.info(
-                    f"Skipping {count} NaN pixels ({(count / total_pixels) * 100:.2f}%) in landcover analysis"
-                )
-                continue
-
-            percentage = (count / total_pixels) * 100
-            material_name = "Unknown"
-
-            for material in self.materials:
-                if material["esa_class"] == cls:
-                    material_name = material["name"]
-                    break
-
-            class_stats[int(cls)] = {
-                "name": material_name,
-                "count": int(count),
-                "percentage": round(percentage, 2),
-            }
-
-        return {
-            "total_pixels": total_pixels,
-            "unique_classes": len(unique_classes),
-            "class_distribution": class_stats,
-        }
-
     def generate_textures_from_file(
         self,
         landcover_file_path: UPath,
@@ -340,8 +296,6 @@ class TextureGenerator:
 
         if create_preview:
             self.create_preview_texture(landcover_data, preview_path)
-
-        analysis = self.analyze_landcover_classes(landcover_data)
 
         return selection_path, preview_path
 

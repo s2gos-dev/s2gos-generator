@@ -61,6 +61,8 @@ class SceneResourceContext:
         self._buffer_aoi_polygon: Optional[object] = None
         self._background_aoi_polygon: Optional[object] = None
 
+        self._coord_system: Optional[object] = None
+
     @property
     def user_assets(self):
         """Get combined user assets (config + XML assets)."""
@@ -80,3 +82,23 @@ class SceneResourceContext:
     def has_hamster(self) -> bool:
         """Check if HAMSTER data integration is enabled."""
         return self.config.hamster is not None and self.config.hamster.enabled
+
+    @property
+    def coordinate_system(self):
+        """Get cached coordinate system for this scene.
+
+        Lazily creates and caches the coordinate system to avoid expensive
+        pyproj initialization overhead (CRS and Transformer creation).
+        This is reused across material region processing for target, buffer,
+        and background areas.
+
+        Returns:
+            CoordinateSystem instance for this scene's center location
+        """
+        if self._coord_system is None:
+            from s2gos_utils.coordinates import CoordinateSystem
+
+            self._coord_system = CoordinateSystem(
+                center_lat=self.center_lat, center_lon=self.center_lon
+            )
+        return self._coord_system

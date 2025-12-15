@@ -26,8 +26,7 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
 
     if atmosphere_config.details.type == "molecular":
         mol_config = atmosphere_config.details
-        base_dict["molecular_atmosphere"] = {
-            "thermoprops_identifier": mol_config.thermoprops.identifier,
+        mol_atm_dict = {
             "altitude_min": mol_config.thermoprops.altitude_min,
             "altitude_max": mol_config.thermoprops.altitude_max,
             "altitude_step": mol_config.thermoprops.altitude_step,
@@ -38,6 +37,15 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
             "has_absorption": mol_config.has_absorption,
             "has_scattering": mol_config.has_scattering,
         }
+
+        if mol_config.thermoprops.thermoprops_file:
+            mol_atm_dict["thermoprops_file"] = str(
+                mol_config.thermoprops.thermoprops_file
+            )
+        else:
+            mol_atm_dict["thermoprops_identifier"] = mol_config.thermoprops.identifier
+
+        base_dict["molecular_atmosphere"] = mol_atm_dict
 
     elif atmosphere_config.details.type == "homogeneous":
         homogeneous_config = atmosphere_config.details
@@ -63,8 +71,7 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
 
         if heterogeneous_config.molecular:
             mol_config = heterogeneous_config.molecular
-            base_dict["molecular_atmosphere"] = {
-                "thermoprops_identifier": mol_config.thermoprops.identifier,
+            mol_atm_dict = {
                 "altitude_min": mol_config.thermoprops.altitude_min,
                 "altitude_max": mol_config.thermoprops.altitude_max,
                 "altitude_step": mol_config.thermoprops.altitude_step,
@@ -76,11 +83,26 @@ def _convert_atmosphere_config_to_dict(atmosphere_config) -> dict:
                 "has_scattering": mol_config.has_scattering,
             }
 
+            if mol_config.thermoprops.thermoprops_file:
+                mol_atm_dict["thermoprops_file"] = str(
+                    mol_config.thermoprops.thermoprops_file
+                )
+            else:
+                mol_atm_dict["thermoprops_identifier"] = (
+                    mol_config.thermoprops.identifier
+                )
+
+            base_dict["molecular_atmosphere"] = mol_atm_dict
+
         if heterogeneous_config.particle_layers:
             base_dict["particle_layers"] = []
             for layer in heterogeneous_config.particle_layers:
                 layer_dict = {
-                    "aerosol_dataset": layer.aerosol_dataset.value,
+                    "aerosol_dataset": (
+                        layer.aerosol_dataset.value
+                        if hasattr(layer.aerosol_dataset, "value")
+                        else layer.aerosol_dataset
+                    ),
                     "optical_thickness": layer.optical_thickness,
                     "altitude_bottom": layer.altitude_bottom,
                     "altitude_top": layer.altitude_top,
@@ -188,7 +210,9 @@ def create_s2gos_scene(
         for material_name, texture_index in region_material_indices.items():
             if material_name not in material_indices.values():
                 material_indices[texture_index] = material_name
-                logging.info(f"Added region material '{material_name}' with texture index {texture_index}")
+                logging.info(
+                    f"Added region material '{material_name}' with texture index {texture_index}"
+                )
 
     target = {
         "mesh": mesh_path,
@@ -292,7 +316,9 @@ def create_s2gos_scene(
 
     inline_materials = kwargs.get("inline_materials", {})
     if inline_materials:
-        logging.info(f"Adding {len(inline_materials)} inline material definitions from UserAssets")
+        logging.info(
+            f"Adding {len(inline_materials)} inline material definitions from UserAssets"
+        )
         for mat_id, mat_def in inline_materials.items():
             if mat_id in materials:
                 logging.warning(

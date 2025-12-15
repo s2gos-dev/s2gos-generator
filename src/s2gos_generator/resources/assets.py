@@ -67,7 +67,9 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
                     mat_id = asset.get_inline_material_id()
                     inline_materials[mat_id] = asset.material
                     object_data["material"] = mat_id
-                    logging.info(f"Added inline material '{mat_id}' for object '{asset.object_id}'")
+                    logging.info(
+                        f"Added inline material '{mat_id}' for object '{asset.object_id}'"
+                    )
                 else:
                     object_data["material"] = asset.material
 

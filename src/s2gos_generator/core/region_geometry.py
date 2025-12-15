@@ -10,9 +10,10 @@ from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
-from shapely.geometry import Point, Polygon as ShapelyPolygon
-
+from rasterio.features import rasterize
+from rasterio.transform import from_bounds
 from s2gos_utils.coordinates import CoordinateSystem
+from shapely.geometry import Polygon as ShapelyPolygon
 
 
 class RegionGeometry(BaseModel, ABC):
@@ -22,7 +23,9 @@ class RegionGeometry(BaseModel, ABC):
     at a specified resolution.
     """
 
-    geometry_type: str = Field(..., description="Type of geometry (rectangle, polygon, etc.)")
+    geometry_type: str = Field(
+        ..., description="Type of geometry (rectangle, polygon, etc.)"
+    )
 
     @abstractmethod
     def to_mask(
@@ -218,9 +221,7 @@ class PolygonGeometry(RegionGeometry):
         has_geo = self.vertices_latlon is not None
 
         if not has_scene and not has_geo:
-            raise ValueError(
-                "Polygon requires either vertices_xy or vertices_latlon"
-            )
+            raise ValueError("Polygon requires either vertices_xy or vertices_latlon")
 
         if has_scene and has_geo:
             raise ValueError(
@@ -231,7 +232,9 @@ class PolygonGeometry(RegionGeometry):
         # Check minimum vertices
         vertices = self.vertices_xy if has_scene else self.vertices_latlon
         if len(vertices) < 3:
-            raise ValueError(f"Polygon requires at least 3 vertices, got {len(vertices)}")
+            raise ValueError(
+                f"Polygon requires at least 3 vertices, got {len(vertices)}"
+            )
 
         return self
 
@@ -277,30 +280,38 @@ class PolygonGeometry(RegionGeometry):
         scene_bounds: dict[str, float],
         coordinate_system: Optional[CoordinateSystem] = None,
     ) -> np.ndarray:
-        """Generate binary mask for polygonal region."""
-        # Get vertices in scene coordinates
+        """Generate binary mask for polygonal region.
+
+        Args:
+            width_px: Output mask width in pixels
+            height_px: Output mask height in pixels
+            scene_bounds: Scene bounds dict with 'xmin', 'xmax', 'ymin', 'ymax' in meters
+            coordinate_system: Optional coordinate system for lat/lon conversion
+
+        Returns:
+            Binary mask array (0 or 255) with shape (height_px, width_px)
+        """
         vertices = self._get_scene_vertices(coordinate_system)
 
-        # Create Shapely polygon
         polygon = ShapelyPolygon(vertices)
 
-        # Calculate pixel resolution
-        pixel_width_m = (scene_bounds["xmax"] - scene_bounds["xmin"]) / width_px
-        pixel_height_m = (scene_bounds["ymax"] - scene_bounds["ymin"]) / height_px
+        transform = from_bounds(
+            scene_bounds["xmin"],
+            scene_bounds["ymin"],
+            scene_bounds["xmax"],
+            scene_bounds["ymax"],
+            width_px,
+            height_px,
+        )
 
-        # Create mask array
-        mask = np.zeros((height_px, width_px), dtype=np.uint8)
-
-        # For each pixel, check if its center is inside the polygon
-        for i in range(height_px):
-            for j in range(width_px):
-                # Pixel center coordinates
-                x = scene_bounds["xmin"] + (j + 0.5) * pixel_width_m
-                y = scene_bounds["ymin"] + (i + 0.5) * pixel_height_m
-
-                point = Point(x, y)
-                if polygon.contains(point):
-                    mask[i, j] = 255
+        mask = rasterize(
+            [(polygon, 255)],
+            out_shape=(height_px, width_px),
+            transform=transform,
+            fill=0,
+            dtype=np.uint8,
+            all_touched=False,
+        )
 
         return mask
 
@@ -340,6 +351,5 @@ def geometry_from_dict(data: dict) -> AnyGeometry:
         return PolygonGeometry(**data)
     else:
         raise ValueError(
-            f"Unknown geometry type: {geom_type}. "
-            f"Supported types: rectangle, polygon"
+            f"Unknown geometry type: {geom_type}. Supported types: rectangle, polygon"
         )

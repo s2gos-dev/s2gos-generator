@@ -186,9 +186,9 @@ class ThermophysicalConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     identifier: Optional[str] = Field(
-        "afgl_1986-us_standard", description="Standard atmosphere identifier (joseki)"
+        None, description="Standard atmosphere identifier (joseki)"
     )
-    thermoprops_file: Optional[UPath] = Field(
+    thermoprops_file: Optional[PathLike] = Field(
         None,
         description="Path to CAMS thermoprops NetCDF file (alternative to identifier)",
     )
@@ -208,20 +208,28 @@ class ThermophysicalConfig(BaseModel):
             raise ValueError("Maximum altitude must be greater than minimum altitude")
         return self
 
+    @field_validator("thermoprops_file", mode="before")
+    @classmethod
+    def validate_thermaproprs_path(cls, v):
+        """Validate and resolve thermaproprs file path using configured search paths."""
+        if v is not None:
+            v_str = str(v)
+            resolved = _resolve_asset_path(v_str, asset_type="NetCDF")
+            return UPath(resolved)
+
     @model_validator(mode="after")
     def validate_thermoprops_source(self):
-        """Ensure exactly one thermoprops source is specified."""
+        """Ensure exactly one source is used, applying defaults if necessary."""
         has_identifier = self.identifier is not None
         has_file = self.thermoprops_file is not None
 
         if has_identifier and has_file:
             raise ValueError(
-                "Specify either 'identifier' (joseki) OR 'thermoprops_file' (CAMS NetCDF), not both"
+                "Specify either 'identifier' (joseki) OR 'thermoprops_file' (CAMS NetCDF), not both."
             )
+
         if not has_identifier and not has_file:
-            raise ValueError(
-                "Must specify either 'identifier' (joseki) OR 'thermoprops_file' (CAMS NetCDF)"
-            )
+            self.identifier = "afgl_1986-us_standard"
 
         return self
 

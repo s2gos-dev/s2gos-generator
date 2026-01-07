@@ -47,6 +47,13 @@ class AtmosphereType(str, Enum):
     HETEROGENEOUS = "heterogeneous"
 
 
+class Month(str, Enum):
+    """Month selection for seasonal adjustments."""
+
+    JANUARY = "january"
+    JULY = "july"
+
+
 class SceneLocation(BaseModel):
     """Geographic location configuration."""
 
@@ -163,9 +170,6 @@ class DataSources(BaseModel):
 class ProcessingOptions(BaseModel):
     """Processing options for scene generation."""
 
-    target_resolution_m: float = Field(
-        30.0, gt=0.0, description="Target resolution in meters"
-    )
     generate_texture_preview: bool = Field(
         True, description="Generate texture preview images"
     )
@@ -933,6 +937,21 @@ class SceneGenConfig(BaseModel):
     output_dir: PathLike = Field(
         ..., description="Output directory for generated scene"
     )
+
+    target_resolution_m: float = Field(
+        30.0, gt=0.0, description="Target resolution in meters"
+    )
+
+    apply_seasonal_snow: bool = Field(
+        default=False, description="Apply seasonal snow adjustment to terrain materials"
+    )
+    snow_season_month: Optional[Month] = Field(
+        default=None, description="Month for seasonal snow calculation (January or July)"
+    )
+    snow_material_index: int = Field(
+        default=6, description="Material index to use for snow coverage"
+    )
+
     processing: ProcessingOptions = Field(
         default_factory=ProcessingOptions, description="Processing options"
     )
@@ -1194,7 +1213,9 @@ def create_scene_config(
         ),
         data_sources=data_sources,
         output_dir=output_dir,
-        processing=ProcessingOptions(target_resolution_m=target_resolution_m),
+        target_resolution_m=target_resolution_m,
+        apply_seasonal_snow=True,
+        snow_season_month="july",
         atmosphere=atmosphere or _default_atmosphere_config(),
         **kwargs,
     )

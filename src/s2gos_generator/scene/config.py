@@ -240,15 +240,14 @@ def create_s2gos_scene(
         buffer_resolution = int(buffer_size_km * 10)
         target_resolution = int(aoi_size_km * 10)
 
-        from ..assets.texture import TextureGenerator
+        from ..assets.masks import generate_buffer_mask
 
-        texture_gen = TextureGenerator()
         mask_path = (
             output_dir
             / "textures"
             / f"mask_{scene_name}_{int(buffer_size_km)}km_buffer_{int(aoi_size_km)}km_target.bmp"
         )
-        texture_gen.generate_buffer_mask(
+        generate_buffer_mask(
             mask_size=buffer_resolution,
             target_size=target_resolution,
             output_path=mask_path,

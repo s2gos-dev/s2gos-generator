@@ -81,14 +81,14 @@ DEFAULT_MATERIALS = [
 ]
 
 
-class TextureGenerator:
+class TerrainMaterialGenerator:
     """
-    Generates texture maps from land cover data for use in 3D rendering.
+    Generates terrain material selection textures from land cover data for use in 3D rendering.
     """
 
     def __init__(self, materials: Optional[List[Dict]] = None):
         """
-        Initialize the texture generator.
+        Initialize the terrain material generator.
 
         Args:
             materials: List of material definitions. If None, uses default materials.
@@ -104,6 +104,10 @@ class TextureGenerator:
         output_path: UPath,
         flip_vertical: bool = False,
         default_material_index: int = PERMANENT_WATER_MATERIAL_INDEX,
+        dem_data: Optional[xr.DataArray] = None,
+        season_month: Optional[str] = None,
+        snow_material_index: Optional[int] = None,
+        coordinate_system=None,
     ) -> np.ndarray:
         """
         Converts land cover classification data to a material selection texture.
@@ -113,6 +117,10 @@ class TextureGenerator:
             output_path: UPath where the texture PNG will be saved.
             flip_vertical: If True, flips the texture vertically (for Mitsuba compatibility).
             default_material_index: Material index to use for unknown classes.
+            dem_data: Optional DEM DataArray for seasonal snow adjustment.
+            season_month: Optional month name for seasonal snow adjustment.
+            snow_material_index: Optional material index to use for snow.
+            coordinate_system: Optional CoordinateSystem for scene-to-latlon conversion.
 
         Returns:
             The selection texture as a numpy array.
@@ -140,6 +148,20 @@ class TextureGenerator:
         for esa_class, material_index in self.class_to_index.items():
             mask = class_values == esa_class
             selection_texture[mask] = material_index
+
+        # Apply seasonal snow adjustment if requested
+        if dem_data is not None and season_month is not None and snow_material_index is not None:
+            if coordinate_system is None:
+                logging.warning("Seasonal snow requested but coordinate_system not provided, skipping snow adjustment")
+            else:
+                selection_texture = self._apply_seasonal_snow(
+                    selection_texture=selection_texture,
+                    landcover_data=landcover_data,
+                    dem_data=dem_data,
+                    season_month=season_month,
+                    snow_material_index=snow_material_index,
+                    coordinate_system=coordinate_system,
+                )
 
         if flip_vertical:
             selection_texture = np.flipud(selection_texture)
@@ -256,12 +278,90 @@ class TextureGenerator:
             "class_mapping": self.class_to_index,
         }
 
+    def _apply_seasonal_snow(
+        self,
+        selection_texture: np.ndarray,
+        landcover_data: xr.DataArray,
+        dem_data: xr.DataArray,
+        season_month: str,
+        snow_material_index: int,
+        coordinate_system,
+    ) -> np.ndarray:
+        """
+        Apply seasonal snow using temperature-based probability model.
+
+        Args:
+            selection_texture: Base material selection texture.
+            landcover_data: Land cover DataArray with coordinates.
+            dem_data: DEM DataArray with elevation values.
+            season_month: "january" or "july".
+            snow_material_index: Material index for snow.
+            coordinate_system: CoordinateSystem for scene-to-latlon conversion.
+
+        Returns:
+            Snow-adjusted selection texture.
+        """
+        from ..seasonal.snow import Month, calculate_snow_probability_map, get_day_of_year
+
+        # Get scene coordinates (in meters from center)
+        y_coords = landcover_data.coords["y"].values  # meters (scene Y)
+        x_coords = landcover_data.coords["x"].values  # meters (scene X)
+
+        # Create 2D meshgrids for scene coordinates
+        y_grid_scene, x_grid_scene = np.meshgrid(y_coords, x_coords, indexing='ij')
+
+        # Convert scene coordinates to absolute coordinates for transformation
+        center_x = coordinate_system._center_x
+        center_y = coordinate_system._center_y
+
+        x_absolute = x_grid_scene + center_x
+        y_absolute = y_grid_scene + center_y
+
+        # Use pyproj transformer to convert to lat/lon (vectorized)
+        # Note: pyproj transform expects (x, y) and returns (lon, lat)
+        lon_grid, lat_grid = coordinate_system._from_scene_transformer.transform(
+            x_absolute, y_absolute
+        )
+
+        # Get elevation
+        elevation_grid = dem_data.values
+
+        # Get day of year from month
+        month_enum = Month.JANUARY if "jan" in season_month.lower() else Month.JULY
+        day_of_year = get_day_of_year(month_enum)
+
+        snow_probs, temps = calculate_snow_probability_map(
+            latitudes=lat_grid,
+            elevations=elevation_grid,
+            day_of_year=day_of_year,
+            smooth_sigma=10.0,
+        )
+
+        random_field = np.random.uniform(0, 1, snow_probs.shape)
+        snow_mask = snow_probs > random_field
+
+        snow_adjusted = selection_texture.copy()
+        snow_adjusted[snow_mask] = snow_material_index
+
+        snow_coverage = snow_mask.mean() * 100
+        logging.info(
+            f"Seasonal snow ({season_month}): {snow_coverage:.1f}% coverage, "
+            f"temperature {temps.min():.1f}°C to {temps.max():.1f}°C, "
+            f"{snow_mask.sum()} pixels modified"
+        )
+
+        return snow_adjusted
+
     def generate_textures_from_file(
         self,
         landcover_file_path: UPath,
         output_dir: UPath,
         base_name: str,
         create_preview: bool = True,
+        dem_file_path: Optional[UPath] = None,
+        season_month: Optional[str] = None,
+        snow_material_index: Optional[int] = None,
+        coordinate_system=None,
     ) -> Tuple[UPath, Optional[UPath]]:
         """
         Complete pipeline: loads land cover from file and generates textures.
@@ -271,6 +371,10 @@ class TextureGenerator:
             output_dir: Directory where textures will be saved.
             base_name: Base name for output files.
             create_preview: Whether to create a color preview texture.
+            dem_file_path: Optional UPath to DEM file for seasonal snow adjustment.
+            season_month: Optional month name for seasonal snow adjustment.
+            snow_material_index: Optional material index for snow.
+            coordinate_system: Optional CoordinateSystem for scene-to-latlon conversion.
 
         Returns:
             Tuple of (selection_texture_path, preview_texture_path).
@@ -287,49 +391,29 @@ class TextureGenerator:
                     list(landcover_data.data_vars.keys())[0]
                 ]
 
+        # Load DEM if provided for seasonal snow adjustment
+        dem_data = None
+        if dem_file_path is not None:
+            dem_dataset = xr.open_zarr(dem_file_path)
+            dem_data = dem_dataset["elevation"]
+
         selection_path = output_dir / f"{base_name}_selection.png"
         preview_path = (
             output_dir / f"{base_name}_preview.png" if create_preview else None
         )
 
-        self.landcover_to_selection_texture(landcover_data, selection_path)
+        # Generate selection texture with optional snow adjustment
+        self.landcover_to_selection_texture(
+            landcover_data,
+            selection_path,
+            dem_data=dem_data,
+            season_month=season_month,
+            snow_material_index=snow_material_index,
+            coordinate_system=coordinate_system,
+        )
 
+        # Preview texture shows base landcover (no snow adjustment)
         if create_preview:
             self.create_preview_texture(landcover_data, preview_path)
 
         return selection_path, preview_path
-
-    def generate_buffer_mask(
-        self, mask_size: int, target_size: int, output_path: UPath
-    ) -> UPath:
-        """
-        Generates a square buffer mask texture with center hole for target area.
-
-        Args:
-            mask_size: Total size of the mask in pixels (buffer area)
-            target_size: Size of the center hole in pixels (target area)
-            output_path: UPath where the mask will be saved
-
-        Returns:
-            Path to the generated mask file
-        """
-
-        mask = np.ones((mask_size, mask_size), dtype=np.uint8) * MAX_PIXEL_VALUE
-
-        center = mask_size // 2
-        half_target = target_size // 2
-
-        start_y = center - half_target
-        end_y = center + half_target
-        start_x = center - half_target
-        end_x = center + half_target
-
-        mask[start_y:end_y, start_x:end_x] = 0
-
-        from s2gos_utils.io.paths import mkdir
-
-        mkdir(output_path.parent)
-        image = Image.fromarray(mask, mode="L")
-        image.save(output_path)
-
-        return output_path

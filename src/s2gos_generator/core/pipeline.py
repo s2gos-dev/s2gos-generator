@@ -253,8 +253,7 @@ class SceneGenerationPipeline:
                 ctx.region_materials = region_materials
 
             # Execute all resources using DAG executor
-            results = self.executor.execute(ctx)
-            print(f"{results = }")
+            _ = self.executor.execute(ctx)
             scene_description = getattr(ctx, "scene_description", None)
             if scene_description is None:
                 raise RuntimeError("Scene description not found in pipeline results")

@@ -1,8 +1,9 @@
 from .base_processor import BaseTileProcessor
 from .dem import DEMProcessor
 from .landcover import LandCoverProcessor
+from .masks import generate_buffer_mask
 from .mesh import MeshGenerator
-from .texture import TextureGenerator
+from .terrain_material import TerrainMaterialGenerator
 from .xml_importer import import_xml_assets, merge_material_libraries
 
 __all__ = [
@@ -10,7 +11,8 @@ __all__ = [
     "DEMProcessor",
     "LandCoverProcessor",
     "MeshGenerator",
-    "TextureGenerator",
+    "TerrainMaterialGenerator",
+    "generate_buffer_mask",
     "import_xml_assets",
     "merge_material_libraries",
 ]

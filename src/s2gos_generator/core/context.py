@@ -47,7 +47,7 @@ class SceneResourceContext:
         self.center_lat = config.location.center_lat
         self.center_lon = config.location.center_lon
         self.aoi_size_km = config.location.aoi_size_km
-        self.target_resolution_m = config.processing.target_resolution_m
+        self.target_resolution_m = config.target_resolution_m
 
         # Scene-specific data
         self.assets = SceneAssets()

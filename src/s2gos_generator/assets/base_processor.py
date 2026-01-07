@@ -173,7 +173,7 @@ class BaseTileProcessor(ABC):
                     da = self._process_single_tile(da, bbox)
                     data_arrays.append(da)
             else:
-                da = rxr.open_rasterio(path, chunks={"x": chunk_size, "y": chunk_size})
+                da = rxr.open_rasterio(str(path), chunks={"x": chunk_size, "y": chunk_size})
                 da = self._process_single_tile(da, bbox)
                 data_arrays.append(da)
 

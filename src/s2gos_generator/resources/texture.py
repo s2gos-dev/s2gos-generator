@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 from PIL import Image
 
-from ..assets.texture import TextureGenerator
+from ..assets.terrain_material import TerrainMaterialGenerator
 from ..core.context import SceneResourceContext
 
 
@@ -116,16 +116,32 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
     if landcover_file_path is None:
         raise ValueError("Target landcover file not found from dependencies")
 
-    texture_generator = TextureGenerator()
+    dem_file_path = None
+    season_month = None
+    snow_material_index = None
+
+    if ctx.config.apply_seasonal_snow:
+        dem_file_path = ctx.dependency_outputs["target_dem"]
+        season_month = ctx.config.snow_season_month
+        snow_material_index = ctx.config.snow_material_index
+
+        if dem_file_path is None:
+            logging.warning("Seasonal snow requested but DEM not available")
+
+    material_gen = TerrainMaterialGenerator()
 
     resolution_str = f"{ctx.target_resolution_m}m"
 
     selection_texture_path, preview_texture_path = (
-        texture_generator.generate_textures_from_file(
+        material_gen.generate_textures_from_file(
             landcover_file_path=landcover_file_path,
             output_dir=ctx.textures_dir,
             base_name=f"{ctx.scene_name}_{resolution_str}",
             create_preview=ctx.config.processing.generate_texture_preview,
+            dem_file_path=dem_file_path,
+            season_month=season_month,
+            snow_material_index=snow_material_index,
+            coordinate_system=ctx.coordinate_system,
         )
     )
 
@@ -164,17 +180,33 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Buffer landcover file not found from dependencies")
         return None
 
-    texture_generator = TextureGenerator()
+    dem_file_path = None
+    season_month = None
+    snow_material_index = None
+
+    if ctx.config.apply_seasonal_snow:
+        dem_file_path = ctx.dependency_outputs.get("buffer_dem")
+        season_month = ctx.config.snow_season_month
+        snow_material_index = ctx.config.snow_material_index
+
+        if dem_file_path is None:
+            logging.warning("Seasonal snow requested for buffer but DEM not available")
+
+    material_gen = TerrainMaterialGenerator()
 
     buffer_resolution_m = ctx.config.buffer_resolution_m
     resolution_str = f"{buffer_resolution_m}m"
 
     selection_texture_path, preview_texture_path = (
-        texture_generator.generate_textures_from_file(
+        material_gen.generate_textures_from_file(
             landcover_file_path=buffer_landcover_file_path,
             output_dir=ctx.textures_dir,
             base_name=f"{ctx.scene_name}_buffer_{resolution_str}",
             create_preview=ctx.config.processing.generate_texture_preview,
+            dem_file_path=dem_file_path,
+            season_month=season_month,
+            snow_material_index=snow_material_index,
+            coordinate_system=ctx.coordinate_system,
         )
     )
 
@@ -212,15 +244,31 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Background landcover file not found from dependencies")
         return None
 
-    texture_generator = TextureGenerator()
+    dem_file_path = None
+    season_month = None
+    snow_material_index = None
+
+    if ctx.config.apply_seasonal_snow:
+        dem_file_path = ctx.dependency_outputs.get("background_dem")
+        season_month = ctx.config.snow_season_month
+        snow_material_index = ctx.config.snow_material_index
+
+        if dem_file_path is None:
+            logging.info("Seasonal snow requested for background but DEM not available (this is normal)")
+
+    material_gen = TerrainMaterialGenerator()
     background_resolution_m = ctx.config.background_resolution_m
 
     selection_texture_path, preview_texture_path = (
-        texture_generator.generate_textures_from_file(
+        material_gen.generate_textures_from_file(
             landcover_file_path=background_landcover_file_path,
             output_dir=ctx.textures_dir,
             base_name=f"{ctx.scene_name}_background_{background_resolution_m}m",
             create_preview=ctx.config.processing.generate_texture_preview,
+            dem_file_path=dem_file_path,
+            season_month=season_month,
+            snow_material_index=snow_material_index,
+            coordinate_system=ctx.coordinate_system,
         )
     )
 

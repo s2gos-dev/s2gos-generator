@@ -1,30 +1,30 @@
 from dynaconf import Validator
+from dynaconf.utils.boxing import DynaBox
 from s2gos_utils.setting import settings as util_settings
 
+# def _dem_index_path(settings=None, validator=None) -> str:
+#     return "dem_index.feather"
 
-def _dem_index_path(settings=None, validator=None) -> str:
-    return "dem_index.feather"
 
-
-def _landcover_index_path(settings=None, validator=None) -> str:
-    return "landcover_index.feather"
+# def _landcover_index_path(settings=None, validator=None) -> str:
+#     return "landcover_index.feather"
 
 
 def _material_config_path(settings=None, validator=None) -> str:
-    return "materials.json"
+    return "./materials.json"
 
 
 # Validate Generator config
+# Note that dataset validation will be done at dataset instantiation.
 util_settings.validators.register(
-    Validator("generator.data.dem_root_dir", cast=str, must_exist=True),
-    Validator("generator.data.dem_index_path", cast=str, default=_dem_index_path),
-    Validator("generator.data.landcover_root_dir", cast=str, must_exist=True),
-    Validator(
-        "generator.data.landcover_index_path", cast=str, default=_landcover_index_path
-    ),
-    Validator(
-        "generator.data.material_config_path", cast=str, default=_material_config_path
-    ),
+    # DEM
+    Validator("generator.dataset.dem", cast=DynaBox, must_exist=True),
+    Validator("generator.dataset.dem.type", cast=str, must_exist=True),
+    # Landcover
+    Validator("generator.dataset.landcover", cast=DynaBox, must_exist=True),
+    Validator("generator.dataset.landcover.type", cast=str, must_exist=True),
+    # Files
+    Validator("generator.files.material_config", cast=str, default=_material_config_path),
 )
 util_settings.validators.validate(only="generator")
 

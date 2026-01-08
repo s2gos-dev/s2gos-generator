@@ -24,4 +24,8 @@ __all__ = [
     "RegridError",
     "GeospatialError",
     "MaterialError",
+    "dataset_factory",
+    "Dataset",
+    "IndexedGeoTiff",
+    "Zarr",
 ]

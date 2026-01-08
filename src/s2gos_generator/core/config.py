@@ -9,10 +9,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
 from s2gos_utils.io.paths import exists, open_file
 from s2gos_utils.io.resolver import resolver
+from s2gos_utils.setting.paths import to_upath
 from s2gos_utils.typing import PathLike
 from upath import UPath
 
 from .._version import get_version
+from ..dataset import IndexedGeoTiff, Zarr, dataset_factory
 
 
 class AerosolDataset(str, Enum):
@@ -77,12 +79,15 @@ def _load_settings_data_sources_config() -> Dict[str, Any]:
     """
     from ..setting import settings
 
-    data_settings = settings.generator.data.to_dict()
+    dem_settings = settings.generator.dataset.dem
+    landcover_settings = settings.generator.dataset.landcover
+    material_config = settings.generator.files.material_config
 
-    for key, value in data_settings.items():
-        data_settings[key] = str(resolver.resolve(value, strict=True))
-
-    return data_settings
+    return {
+        "dem" : dataset_factory(dem_settings, dem_settings.get("name", "DEM")),
+        "landcover" : dataset_factory(landcover_settings, landcover_settings.get("name", "Landcover")),
+        "material_config_path" : to_upath(material_config),
+    }
 
 
 def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
@@ -125,13 +130,9 @@ def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
 class DataSources(BaseModel):
     """Data source configuration using FileResolver."""
 
-    dem_index_path: str = Field(..., description="Path to DEM index file")
-    dem_root_dir: str = Field(..., description="Root directory for DEM data")
-    landcover_index_path: str = Field(..., description="Path to landcover index file")
-    landcover_root_dir: str = Field(
-        ..., description="Root directory for landcover data"
-    )
-    material_config_path: str = Field(
+    dem: IndexedGeoTiff | Zarr = Field(..., description="DEM Dataset")
+    landcover: IndexedGeoTiff | Zarr = Field(..., description="Landcover Dataset")
+    material_config_path: PathLike = Field(
         ..., description="Path to custom material configuration JSON"
     )
 
@@ -152,16 +153,12 @@ class DataSources(BaseModel):
         return default_config
 
     @field_validator(
-        "dem_index_path",
-        "landcover_index_path",
         "material_config_path",
-        "dem_root_dir",
-        "landcover_root_dir",
     )
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path = UPath(v)
+        path = resolver.resolve(UPath(v))
         if not path.exists():
             raise ValueError(f"Path does not exist: {v}")
         return v

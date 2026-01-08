@@ -16,11 +16,6 @@ class DEMProcessor(BaseTileProcessor):
         super().__init__(index_path, dem_root_dir, "DEM")
 
     @property
-    def path_column(self) -> str:
-        """Column name in index file containing relative paths to DEM tiles."""
-        return "path_dem"
-
-    @property
     def data_variable_name(self) -> str:
         """Name of the data variable in the processed dataset."""
         return "elevation"

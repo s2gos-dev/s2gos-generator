@@ -7,19 +7,15 @@ from shapely.geometry import Polygon
 from upath import UPath
 
 from .base_processor import BaseTileProcessor
+from ..dataset import Dataset, IndexedGeoTiff, Zarr
 
 
 class LandCoverProcessor(BaseTileProcessor):
     """Finds, merges, and processes ESA WorldCover land cover tiles for a given AOI."""
 
-    def __init__(self, index_path: PathLike, landcover_root_dir: PathLike):
+    def __init__(self, dataset : Dataset):
         """Initialize the land cover processor."""
-        super().__init__(index_path, landcover_root_dir, "land cover")
-
-    @property
-    def path_column(self) -> str:
-        """Column name in index file containing relative paths to land cover tiles."""
-        return "path_lc"
+        super().__init__(dataset)
 
     @property
     def data_variable_name(self) -> str:
@@ -58,7 +54,8 @@ class LandCoverProcessor(BaseTileProcessor):
                 elif "lon" in dataset.dims:
                     dataset = dataset.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
 
-            clipped_ds = dataset.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
+            clipped_ds = dataset.rio.clip_box(*aoi_polygon.bounds, crs="EPSG:4326")
+            clipped_ds = clipped_ds.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
 
             return clipped_ds
 
@@ -104,12 +101,21 @@ class LandCoverProcessor(BaseTileProcessor):
         Returns:
             Processed landcover dataset
         """
-        tile_paths = self._find_intersecting_tiles(aoi_polygon)
 
-        # Pass AOI to merge for early spatial filtering
-        merged_landcover = self._merge_tiles(tile_paths, aoi_polygon)
-        merged_landcover = merged_landcover.persist()
+        tile_paths = self.dataset.query(aoi_polygon)
+        if len(tile_paths) > 0:
+            # no overlap, should fail somehow?
+            pass
 
+        if isinstance(self.dataset, IndexedGeoTiff):
+            # Pass AOI to merge for early spatial filtering
+            merged_landcover = self._merge_tiles(tile_paths, aoi_polygon)
+            merged_landcover = merged_landcover.persist()
+        elif isinstance(self.dataset, Zarr):
+            merged_landcover = self.dataset.open()
+        else:
+            raise NotImplementedError("This type of dataset is not supported for landcovers yet.")
+        
         # Clip to exact AOI geometry
         clipped_landcover = self._clip_to_aoi(merged_landcover, aoi_polygon)
 

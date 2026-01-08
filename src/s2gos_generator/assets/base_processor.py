@@ -8,6 +8,7 @@ from typing import List, Optional, Union
 import geopandas as gpd
 import psutil
 import rioxarray as rxr
+from ..dataset import Dataset
 import xarray as xr
 from s2gos_utils.io.paths import exists, open_dataarray, read_geofeather
 from s2gos_utils.typing import PathLike
@@ -40,33 +41,16 @@ class BaseTileProcessor(ABC):
 
     def __init__(
         self,
-        index_path: PathLike,
-        data_root_dir: PathLike,
-        data_description: str,
+        dataset: Dataset,
     ):
         """Initialize the base tile processor.
 
         Args:
-            index_path: Path to the spatial index file
-            data_root_dir: Root directory containing data tiles
-            data_description: Type of data being processed (for logging)
+            dataset: Dataset containing the data tiles.
         """
-        if not exists(index_path):
-            raise FileNotFoundError(f"Index file not found at: {index_path}")
-        if not exists(data_root_dir):
-            raise NotADirectoryError(
-                f"{data_description} root directory not found: {data_root_dir}"
-            )
-
-        self.index_gdf = read_geofeather(index_path)
-        self.data_root_dir = UPath(data_root_dir)
-        self.data_description = data_description
-
-    @property
-    @abstractmethod
-    def path_column(self) -> str:
-        """Column name in index file containing relative paths to data tiles."""
-        pass
+        
+        self.dataset = dataset
+        self.data_description = dataset.name
 
     @property
     @abstractmethod
@@ -97,31 +81,6 @@ class BaseTileProcessor(ABC):
     def use_context_manager(self) -> bool:
         """Whether to use context manager when opening data arrays."""
         pass
-
-    def _find_intersecting_tiles(self, aoi_polygon: Polygon) -> List[UPath]:
-        """Find data tiles that intersect with the AOI.
-
-        Args:
-            aoi_polygon: Area of interest polygon
-
-        Returns:
-            List of paths to intersecting tiles
-
-        Raises:
-            FileNotFoundError: If no intersecting tiles are found
-        """
-        aoi_gdf = gpd.GeoDataFrame(geometry=[aoi_polygon], crs="EPSG:4326")
-        selected_products = self.index_gdf.sjoin(aoi_gdf.to_crs(self.index_gdf.crs))
-
-        if selected_products.empty:
-            raise FileNotFoundError(
-                f"No {self.data_description} tiles found for the given AOI."
-            )
-
-        relative_paths = selected_products[self.path_column].unique()
-        filepaths = [self.data_root_dir / p for p in relative_paths]
-
-        return filepaths
 
     def _calculate_optimal_chunk_size(self, num_tiles: int) -> int:
         """Calculate optimal chunk size based on available memory and tile count."""

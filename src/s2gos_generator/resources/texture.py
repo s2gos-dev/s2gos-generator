@@ -119,11 +119,14 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
     dem_file_path = None
     season_month = None
     snow_material_index = None
+    snow_thermoprops = None
 
     if ctx.config.apply_seasonal_snow:
         dem_file_path = ctx.dependency_outputs["target_dem"]
         season_month = ctx.config.snow_season_month
         snow_material_index = ctx.config.snow_material_index
+        if ctx.config.snow_thermoprops:
+            snow_thermoprops = ctx.config.snow_thermoprops.thermoprops_file
 
         if dem_file_path is None:
             logging.warning("Seasonal snow requested but DEM not available")
@@ -142,6 +145,7 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
             season_month=season_month,
             snow_material_index=snow_material_index,
             coordinate_system=ctx.coordinate_system,
+            snow_thermoprops=snow_thermoprops,
         )
     )
 
@@ -183,11 +187,14 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
     dem_file_path = None
     season_month = None
     snow_material_index = None
+    snow_thermoprops = None
 
     if ctx.config.apply_seasonal_snow:
         dem_file_path = ctx.dependency_outputs.get("buffer_dem")
         season_month = ctx.config.snow_season_month
         snow_material_index = ctx.config.snow_material_index
+        if ctx.config.snow_thermoprops:
+            snow_thermoprops = ctx.config.snow_thermoprops.thermoprops_file
 
         if dem_file_path is None:
             logging.warning("Seasonal snow requested for buffer but DEM not available")
@@ -207,6 +214,7 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
             season_month=season_month,
             snow_material_index=snow_material_index,
             coordinate_system=ctx.coordinate_system,
+            snow_thermoprops=snow_thermoprops,
         )
     )
 
@@ -244,17 +252,11 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Background landcover file not found from dependencies")
         return None
 
+    # Background is always flat - no snow application
     dem_file_path = None
     season_month = None
     snow_material_index = None
-
-    if ctx.config.apply_seasonal_snow:
-        dem_file_path = ctx.dependency_outputs.get("background_dem")
-        season_month = ctx.config.snow_season_month
-        snow_material_index = ctx.config.snow_material_index
-
-        if dem_file_path is None:
-            logging.info("Seasonal snow requested for background but DEM not available (this is normal)")
+    snow_thermoprops = None
 
     material_gen = TerrainMaterialGenerator()
     background_resolution_m = ctx.config.background_resolution_m
@@ -269,6 +271,7 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
             season_month=season_month,
             snow_material_index=snow_material_index,
             coordinate_system=ctx.coordinate_system,
+            snow_thermoprops=snow_thermoprops,
         )
     )
 

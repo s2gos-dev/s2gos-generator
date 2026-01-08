@@ -108,6 +108,7 @@ class TerrainMaterialGenerator:
         season_month: Optional[str] = None,
         snow_material_index: Optional[int] = None,
         coordinate_system=None,
+        snow_thermoprops: Optional[UPath] = None,
     ) -> np.ndarray:
         """
         Converts land cover classification data to a material selection texture.
@@ -121,6 +122,7 @@ class TerrainMaterialGenerator:
             season_month: Optional month name for seasonal snow adjustment.
             snow_material_index: Optional material index to use for snow.
             coordinate_system: Optional CoordinateSystem for scene-to-latlon conversion.
+            snow_thermoprops: Optional path to CAMS thermoprops NetCDF file.
 
         Returns:
             The selection texture as a numpy array.
@@ -161,6 +163,7 @@ class TerrainMaterialGenerator:
                     season_month=season_month,
                     snow_material_index=snow_material_index,
                     coordinate_system=coordinate_system,
+                    snow_thermoprops=snow_thermoprops,
                 )
 
         if flip_vertical:
@@ -286,6 +289,7 @@ class TerrainMaterialGenerator:
         season_month: str,
         snow_material_index: int,
         coordinate_system,
+        snow_thermoprops: Optional[UPath] = None,
     ) -> np.ndarray:
         """
         Apply seasonal snow using temperature-based probability model.
@@ -294,47 +298,69 @@ class TerrainMaterialGenerator:
             selection_texture: Base material selection texture.
             landcover_data: Land cover DataArray with coordinates.
             dem_data: DEM DataArray with elevation values.
-            season_month: "january" or "july".
+            season_month: "june" or "december".
             snow_material_index: Material index for snow.
             coordinate_system: CoordinateSystem for scene-to-latlon conversion.
+            snow_thermoprops: Optional path to CAMS thermoprops NetCDF file.
+                             If None, uses synthetic temperature model.
 
         Returns:
             Snow-adjusted selection texture.
         """
-        from ..seasonal.snow import Month, calculate_snow_probability_map, get_day_of_year
+        from ..seasonal.snow import (
+            Month,
+            calculate_snow_probability_map,
+            get_day_of_year,
+        )
 
-        # Get scene coordinates (in meters from center)
         y_coords = landcover_data.coords["y"].values  # meters (scene Y)
         x_coords = landcover_data.coords["x"].values  # meters (scene X)
 
-        # Create 2D meshgrids for scene coordinates
         y_grid_scene, x_grid_scene = np.meshgrid(y_coords, x_coords, indexing='ij')
 
-        # Convert scene coordinates to absolute coordinates for transformation
         center_x = coordinate_system._center_x
         center_y = coordinate_system._center_y
 
         x_absolute = x_grid_scene + center_x
         y_absolute = y_grid_scene + center_y
 
-        # Use pyproj transformer to convert to lat/lon (vectorized)
-        # Note: pyproj transform expects (x, y) and returns (lon, lat)
         lon_grid, lat_grid = coordinate_system._from_scene_transformer.transform(
             x_absolute, y_absolute
         )
 
-        # Get elevation
         elevation_grid = dem_data.values
 
-        # Get day of year from month
-        month_enum = Month.JANUARY if "jan" in season_month.lower() else Month.JULY
+        month_enum = Month(season_month.lower())
         day_of_year = get_day_of_year(month_enum)
+
+        thermoprops_dataset = None
+        if snow_thermoprops is not None:
+            try:
+                thermoprops_dataset = xr.open_dataset(snow_thermoprops).squeeze(drop=True)
+
+                if 't' not in thermoprops_dataset.data_vars:
+                    raise ValueError("Missing required variable 't' (temperature)")
+                if 'z' not in thermoprops_dataset.coords and 'z' not in thermoprops_dataset.data_vars:
+                    raise ValueError("Missing required coordinate/variable 'z' (height)")
+
+                z_min = float(thermoprops_dataset['z'].min())
+                z_max = float(thermoprops_dataset['z'].max())
+                logging.info(
+                    f"Using CAMS temperature profile: z={z_min:.1f}-{z_max:.1f} km, "
+                    f"{len(thermoprops_dataset['z'])} levels"
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load CAMS thermoprops file '{snow_thermoprops}': {e}\n"
+                    f"Check that file exists and contains 't' (temperature) and 'z' (height)."
+                ) from e
 
         snow_probs, temps = calculate_snow_probability_map(
             latitudes=lat_grid,
             elevations=elevation_grid,
             day_of_year=day_of_year,
             smooth_sigma=10.0,
+            thermoprops=thermoprops_dataset,
         )
 
         random_field = np.random.uniform(0, 1, snow_probs.shape)
@@ -362,6 +388,7 @@ class TerrainMaterialGenerator:
         season_month: Optional[str] = None,
         snow_material_index: Optional[int] = None,
         coordinate_system=None,
+        snow_thermoprops: Optional[UPath] = None,
     ) -> Tuple[UPath, Optional[UPath]]:
         """
         Complete pipeline: loads land cover from file and generates textures.
@@ -375,6 +402,7 @@ class TerrainMaterialGenerator:
             season_month: Optional month name for seasonal snow adjustment.
             snow_material_index: Optional material index for snow.
             coordinate_system: Optional CoordinateSystem for scene-to-latlon conversion.
+            snow_thermoprops: Optional path to CAMS thermoprops NetCDF file.
 
         Returns:
             Tuple of (selection_texture_path, preview_texture_path).
@@ -410,6 +438,7 @@ class TerrainMaterialGenerator:
             season_month=season_month,
             snow_material_index=snow_material_index,
             coordinate_system=coordinate_system,
+            snow_thermoprops=snow_thermoprops,
         )
 
         # Preview texture shows base landcover (no snow adjustment)

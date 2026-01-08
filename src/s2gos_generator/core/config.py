@@ -50,8 +50,8 @@ class AtmosphereType(str, Enum):
 class Month(str, Enum):
     """Month selection for seasonal adjustments."""
 
-    JANUARY = "january"
-    JULY = "july"
+    JUNE = "june"
+    DECEMBER = "december"
 
 
 class SceneLocation(BaseModel):
@@ -946,10 +946,15 @@ class SceneGenConfig(BaseModel):
         default=False, description="Apply seasonal snow adjustment to terrain materials"
     )
     snow_season_month: Optional[Month] = Field(
-        default=None, description="Month for seasonal snow calculation (January or July)"
+        default=None, description="Month for seasonal snow calculation (June or December)"
     )
     snow_material_index: int = Field(
         default=6, description="Material index to use for snow coverage"
+    )
+    snow_thermoprops: Optional[ThermophysicalConfig] = Field(
+        None,
+        description="Optional CAMS thermoprops for snow temperature calculation. "
+                    "If None, uses synthetic temperature model."
     )
 
     processing: ProcessingOptions = Field(
@@ -1025,6 +1030,22 @@ class SceneGenConfig(BaseModel):
             if self.buffer_size_km <= self.location.aoi_size_km:
                 raise ValueError("Buffer size must be larger than AOI size")
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_snow_config(self):
+        """Validate snow configuration consistency."""
+        if self.snow_thermoprops is not None:
+            if not self.apply_seasonal_snow:
+                raise ValueError(
+                    "snow_thermoprops specified but apply_seasonal_snow is False. "
+                    "Set apply_seasonal_snow=True to use CAMS temperature data."
+                )
+            if self.snow_season_month is None:
+                raise ValueError(
+                    "snow_thermoprops requires snow_season_month to be set "
+                    "(JUNE or DECEMBER)"
+                )
         return self
 
     @property
@@ -1214,8 +1235,6 @@ def create_scene_config(
         data_sources=data_sources,
         output_dir=output_dir,
         target_resolution_m=target_resolution_m,
-        apply_seasonal_snow=True,
-        snow_season_month="july",
         atmosphere=atmosphere or _default_atmosphere_config(),
         **kwargs,
     )

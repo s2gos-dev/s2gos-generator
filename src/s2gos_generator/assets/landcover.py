@@ -13,14 +13,15 @@ from ..dataset import Dataset, IndexedGeoTiff, Zarr
 class LandCoverProcessor(BaseTileProcessor):
     """Finds, merges, and processes ESA WorldCover land cover tiles for a given AOI."""
 
-    def __init__(self, dataset : Dataset):
+    def __init__(self, dataset: Dataset):
         """Initialize the land cover processor."""
         super().__init__(dataset)
 
     @property
     def data_variable_name(self) -> str:
         """Name of the data variable in the processed dataset."""
-        return "landcover"
+        var_name = self.dataset.variable_name
+        return var_name if var_name is not None else "landcover"
 
     @property
     def default_interpolation_method(self) -> str:
@@ -41,43 +42,6 @@ class LandCoverProcessor(BaseTileProcessor):
     def use_context_manager(self) -> bool:
         """Landcover processor uses direct assignment for file opening."""
         return False
-
-    def _clip_to_aoi(self, dataset: xr.Dataset, aoi_polygon: Polygon) -> xr.Dataset:
-        """Clip the dataset to the exact AOI geometry."""
-        try:
-            if not hasattr(dataset.rio, "crs") or dataset.rio.crs is None:
-                dataset = dataset.rio.write_crs("EPSG:4326")
-
-            if not hasattr(dataset.rio, "_x_dim") or dataset.rio._x_dim is None:
-                if "x" in dataset.dims:
-                    dataset = dataset.rio.set_spatial_dims(x_dim="x", y_dim="y")
-                elif "lon" in dataset.dims:
-                    dataset = dataset.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
-
-            clipped_ds = dataset.rio.clip_box(*aoi_polygon.bounds, crs="EPSG:4326")
-            clipped_ds = clipped_ds.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
-
-            return clipped_ds
-
-        except ImportError:
-            logging.warning(
-                "rioxarray not available, using bounding box clipping instead..."
-            )
-            bounds = aoi_polygon.bounds  # (minx, miny, maxx, maxy)
-
-            if "x" in dataset.dims and "y" in dataset.dims:
-                x_dim, y_dim = "x", "y"
-            elif "lon" in dataset.dims and "lat" in dataset.dims:
-                x_dim, y_dim = "lon", "lat"
-            else:
-                raise ValueError(
-                    "Dataset must have either (x, y) or (lon, lat) coordinates"
-                )
-
-            clipped_ds = dataset.sel(
-                {x_dim: slice(bounds[0], bounds[2]), y_dim: slice(bounds[3], bounds[1])}
-            )
-            return clipped_ds
 
     def generate_landcover(
         self,
@@ -103,9 +67,6 @@ class LandCoverProcessor(BaseTileProcessor):
         """
 
         tile_paths = self.dataset.query(aoi_polygon)
-        if len(tile_paths) > 0:
-            # no overlap, should fail somehow?
-            pass
 
         if isinstance(self.dataset, IndexedGeoTiff):
             # Pass AOI to merge for early spatial filtering
@@ -114,8 +75,10 @@ class LandCoverProcessor(BaseTileProcessor):
         elif isinstance(self.dataset, Zarr):
             merged_landcover = self.dataset.open()
         else:
-            raise NotImplementedError("This type of dataset is not supported for landcovers yet.")
-        
+            raise NotImplementedError(
+                "This type of dataset is not supported for landcovers."
+            )
+
         # Clip to exact AOI geometry
         clipped_landcover = self._clip_to_aoi(merged_landcover, aoi_polygon)
 

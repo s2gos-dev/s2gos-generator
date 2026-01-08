@@ -23,11 +23,12 @@ def _load_index_gdf(index_path: PathLike):
 
 
 class IndexedGeoTiff(Dataset):
-    index_path: PathLike | None = Field(default=None)
-    root_directory: PathLike | None = Field(default=None)
+    index_path: PathLike = Field()
+    root_directory: PathLike = Field()
     path_column: str | None = Field(default=None)
+    variable_name: str | None = Field(default=None)
     _index_gdf: gpd.GeoDataFrame | None = PrivateAttr(default=None)
-    xr_engine: str = "rasterio"
+    _xr_engine: str = PrivateAttr("rasterio")
 
     def model_post_init(self, __context):
         self._index_gdf = _load_index_gdf(self.index_path)
@@ -47,7 +48,7 @@ class IndexedGeoTiff(Dataset):
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
         path = resolver.resolve(v)
-        if not path.exists():
+        if (not path.exists()) and (path.protocol == "file"):
             raise ValueError(f"Path does not exist: {v}")
         return v
 
@@ -59,6 +60,7 @@ class IndexedGeoTiff(Dataset):
             index_path=to_upath(settings["index_path"]),
             root_directory=to_upath(settings["root_directory"]),
             path_column=settings.get("path_column", None),
+            variable_name=settings.get("variable_name",None),
         )
 
     def query(self, polygon: Polygon, **kwargs) -> list[PathLike]:
@@ -81,4 +83,4 @@ class IndexedGeoTiff(Dataset):
         return filepaths
 
     def open(self, path, **kwargs):
-        return xr.open_dataset(expand_mapper(path), engine=self.xr_engine, **kwargs)
+        return xr.open_dataset(expand_mapper(path), engine=self._xr_engine, **kwargs)

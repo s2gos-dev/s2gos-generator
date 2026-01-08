@@ -19,8 +19,7 @@ def process_target_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     landcover_processor = LandCoverProcessor(
-        index_path=ctx.config.data_sources.landcover_index_path,
-        landcover_root_dir=ctx.config.data_sources.landcover_root_dir,
+        dataset=ctx.config.data_sources.landcover,
     )
 
     landcover_filename = f"landcover_{ctx.scene_name}_{ctx.target_resolution_m}m.zarr"
@@ -60,8 +59,7 @@ def process_buffer_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     landcover_processor = LandCoverProcessor(
-        index_path=ctx.config.data_sources.landcover_index_path,
-        landcover_root_dir=ctx.config.data_sources.landcover_root_dir,
+        dataset=ctx.config.data_sources.landcover,
     )
 
     buffer_resolution_m = ctx.config.buffer_resolution_m
@@ -103,8 +101,7 @@ def process_background_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     landcover_processor = LandCoverProcessor(
-        index_path=ctx.config.data_sources.landcover_index_path,
-        landcover_root_dir=ctx.config.data_sources.landcover_root_dir,
+        dataset=ctx.config.data_sources.landcover,
     )
 
     background_resolution_m = ctx.config.background_resolution_m

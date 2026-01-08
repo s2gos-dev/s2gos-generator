@@ -3,7 +3,7 @@ import logging
 import geopandas as gpd
 import xarray as xr
 from dynaconf.utils.boxing import DynaBox
-from pydantic import Field, field_validator
+from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import expand_mapper, resolver
 from s2gos_utils.setting import to_upath
 from s2gos_utils.typing import PathLike
@@ -13,16 +13,17 @@ from .dataset import Dataset
 
 
 class Zarr(Dataset):
-    path: PathLike | None = Field(default=None)
-    xr_engine: str = "zarr"
+    path: PathLike = Field()
+    variable_name: str | None = Field(default=None)
+    _xr_engine: str = PrivateAttr("zarr")
 
-    # should be a dict not settings.
     @classmethod
     def from_settings(cls, settings: DynaBox | dict, name: str):
         return cls(
             name=name,
             crs=settings.get("crs","EPSG:4326"),
-            path=to_upath(settings.path),
+            path=to_upath(settings["path"]),
+            variable_name=settings.get("variable_name",None),
         )
 
     @field_validator(
@@ -32,7 +33,7 @@ class Zarr(Dataset):
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
         path = resolver.resolve(v)
-        if not path.exists():
+        if not path.exists() and path.protocol == "file":
             raise ValueError(f"Path does not exist: {v}")
         return v
 
@@ -78,7 +79,7 @@ class Zarr(Dataset):
      
     def open(self, path=None, **kwargs):
         return xr.open_dataset(
-            expand_mapper(self.path), engine=self.xr_engine, **kwargs
+            expand_mapper(self.path), engine=self._xr_engine, **kwargs
         )
 
 

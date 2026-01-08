@@ -155,8 +155,8 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         else None,
         background_selection_texture=background_selection_texture,
         background_size_km=background_size_km,
-        dem_index_path=ctx.config.data_sources.dem_index_path,
-        landcover_index_path=ctx.config.data_sources.landcover_index_path,
+        dem_name=ctx.config.data_sources.dem.name,
+        landcover_name=ctx.config.data_sources.landcover.name,
         material_config_path=ctx.config.data_sources.material_config_path,
         # Use baresoil for tree areas - 3D trees handle the vegetation, surface should be soil
         landcover_mapping_overrides={

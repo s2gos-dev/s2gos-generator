@@ -347,8 +347,8 @@ def create_s2gos_scene(
 
     metadata = {
         "generation_date": datetime.now().isoformat(),
-        "dem_index_path": kwargs.get("dem_index_path"),
-        "landcover_index_path": kwargs.get("landcover_index_path"),
+        "dem_name": kwargs.get("dem_name"),
+        "landcover_name": kwargs.get("landcover_name"),
         "landcover_ids": landcover_ids,
         "materials_config_path": str(material_config_path),
     }

@@ -48,7 +48,7 @@ class BaseTileProcessor(ABC):
         Args:
             dataset: Dataset containing the data tiles.
         """
-        
+
         self.dataset = dataset
         self.data_description = dataset.name
 
@@ -180,6 +180,43 @@ class BaseTileProcessor(ABC):
             processed = processed.astype(self.data_type)
 
         return processed
+
+    def _clip_to_aoi(self, dataset: xr.Dataset, aoi_polygon: Polygon) -> xr.Dataset:
+        """Clip the dataset to the exact AOI geometry."""
+        try:
+            if not hasattr(dataset.rio, "crs") or dataset.rio.crs is None:
+                dataset = dataset.rio.write_crs("EPSG:4326")
+
+            if not hasattr(dataset.rio, "_x_dim") or dataset.rio._x_dim is None:
+                if "x" in dataset.dims:
+                    dataset = dataset.rio.set_spatial_dims(x_dim="x", y_dim="y")
+                elif "lon" in dataset.dims:
+                    dataset = dataset.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
+
+            # clipped_ds = dataset.rio.clip_box(*aoi_polygon.bounds, crs="EPSG:4326")
+            clipped_ds = dataset.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
+
+            return clipped_ds
+
+        except ImportError:
+            logging.warning(
+                "rioxarray not available, using bounding box clipping instead..."
+            )
+            bounds = aoi_polygon.bounds  # (minx, miny, maxx, maxy)
+
+            if "x" in dataset.dims and "y" in dataset.dims:
+                x_dim, y_dim = "x", "y"
+            elif "lon" in dataset.dims and "lat" in dataset.dims:
+                x_dim, y_dim = "lon", "lat"
+            else:
+                raise ValueError(
+                    "Dataset must have either (x, y) or (lon, lat) coordinates"
+                )
+
+            clipped_ds = dataset.sel(
+                {x_dim: slice(bounds[0], bounds[2]), y_dim: slice(bounds[3], bounds[1])}
+            )
+            return clipped_ds
 
     def _regrid_data(
         self,

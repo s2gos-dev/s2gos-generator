@@ -19,8 +19,7 @@ def process_target_dem(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     dem_processor = DEMProcessor(
-        index_path=ctx.config.data_sources.dem_index_path,
-        dem_root_dir=ctx.config.data_sources.dem_root_dir,
+        dataset=ctx.config.data_sources.dem
     )
 
     dem_filename = f"dem_{ctx.scene_name}_{ctx.target_resolution_m}m.zarr"
@@ -58,8 +57,7 @@ def process_buffer_dem(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     dem_processor = DEMProcessor(
-        index_path=ctx.config.data_sources.dem_index_path,
-        dem_root_dir=ctx.config.data_sources.dem_root_dir,
+        dataset=ctx.config.data_sources.dem
     )
 
     buffer_resolution_m = ctx.config.buffer_resolution_m

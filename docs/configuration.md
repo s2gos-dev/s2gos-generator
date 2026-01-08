@@ -1,44 +1,61 @@
 # Configuration
 
-The S2GOS generator is configured through a `s2gos_settings.toml` file. The generator automatically searches for this file by climbing up the directory tree from your script's location.
+The S2GOS generator is configured through a `s2gos_settings.yaml` file. The generator automatically searches for this file by climbing up the directory tree from your script's location.
 
 ## Installation Modes
 
 The configuration structure depends on your installation:
 
-- **Standalone** (`s2gos-generator` only): Requires `[common]` and `[generator]` sections
-- **Monorepo** (with `s2gos-simulator`): Includes `[common]`, `[generator]`, and `[simulator]` sections
+- **Standalone** (`s2gos-generator` only): Requires `common` and `generator` sections.
+- **Monorepo** (with `s2gos-simulator`): Includes `common`, `generator`, and `simulator` sections.
 
 ## Configuration Example
 
-```toml
-# s2gos_settings.toml
-# -----------------------------------------
-[common]
-# List of directories for resolving relative file paths (searched in order)
-search_paths = [
-    "/home/user/s2gos/packages/s2gos-generator/resources/data",
-    "/home/user/s2gos/data",
-]
+```yaml
+# s2gos_settings.yaml
+## ========================================================================== ##
+common:
+    ## List of data paths to always add to the file resolver
+    search_paths : [
+        "/home/martonn/Projects/s2gos/s2gos/packages/s2gos-generator/resources/data",
+        "/home/martonn/Projects/s2gos/s2gos/data",
+    ]
 
-[generator.data]
-# Required: Root directories for DEM and land cover data
-dem_root_dir = "/path/to/DEM"
-landcover_root_dir = "/path/to/Landcover/"
 
-# Optional: Override defaults (relative paths resolved via search_paths)
-# dem_index_path = "dem_index.feather"              
-# landcover_index_path = "landcover_index.feather"  
-# material_config_path = "materials.json"           
+## ========================================================================== ##
+generator:
+    # Datasets source paths.
+    datasets:
+        dem:
+            type : "indexed-geotiff"
+            root_directory : <local directory>
+            index_path : <local path>
+
+        landcover:
+            type : "zarr"
+            path : 
+                value: "s3://path/to/worldcover.zarr"
+                protocol : "s3"
+                endpoint_url : <endpoint_url>
+                key : <key>
+                secret : <secret>
+
+    config:
+        material : "./some/local/path/to_json.json"
+        material_2 : 
+            value : "some/other/path"
+            protocol : "https"
+
+
 
 # Optional: Only needed in monorepo with s2gos-simulator
-# [simulator]
+# simulator:
 # See s2gos-simulator documentation for available options
 ```
 
 ## Configuration Sections
 
-### `[common]` - Shared Settings
+### `common` - Shared Settings
 
 Settings used by both generator and simulator packages.
 
@@ -49,9 +66,17 @@ Prioritized list of directories for resolving relative file paths. The file reso
 
 Paths can be absolute or relative. Local paths are automatically resolved, and remote paths (s3://, etc.) are supported. Environment override available via `S2GOS_SEARCH_PATHS`.
 
-### `[generator.data]` - Data Sources
+### `generator.datasets` - Data Sources
 
-Specifies locations of required geospatial datasets.
+Specifies locations of geospatial datasets and data files. The following keywords are currently accepted:
+- `dem`: the location to the Copernicus DEM.
+- `landcover`: the location the ESA WorldCover tiles.
+- `material`: the location to the material configuration JSON file.
+
+A dataset/file is a nested object that requires the following keyword: 
+- `type`: specifies the type of dataset or file being used.
+
+[specify the alias method]
 
 ##### `dem_root_dir`
 *Path string, required*

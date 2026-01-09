@@ -19,7 +19,7 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     from s2gos_utils.coordinates import CoordinateSystem
-    from s2gos_utils.io.paths import mkdir
+    from s2gos_utils.io.paths import copy, mkdir
 
     processed_objects = []
     inline_materials = {}
@@ -50,7 +50,7 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
             # Copy PLY file to objects directory
             ply_filename = f"{asset.object_id}.ply"
             output_ply_path = objects_dir / ply_filename
-            shutil.copy2(asset.ply_path, output_ply_path)
+            copy(asset.ply_path, output_ply_path)
 
             # Create object data structure
             object_data = {

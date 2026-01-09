@@ -4,8 +4,8 @@ from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import expand_mapper, resolver
 from s2gos_utils.io.paths import read_geofeather
-from s2gos_utils.setting import to_upath
-from s2gos_utils.typing import PathLike, PathRef
+from s2gos_utils.setting import to_pathref
+from s2gos_utils.typing import PathRef
 from shapely import Polygon
 from upath import UPath
 
@@ -46,18 +46,18 @@ class IndexedGeoTiff(Dataset):
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path = resolver.resolve(v.upath)
+        path = resolver.resolve(v)
         if (not path.exists()) and (path.protocol == "file"):
             raise ValueError(f"Path does not exist: {v}")
-        return v
+        return PathRef(path, v.cid)
 
     @classmethod
     def from_settings(cls, settings: DynaBox | dict, name: str):
         return cls(
             name=name,
             crs=settings.get("crs", "EPSG:4326"),
-            index_path=to_upath(settings["index_path"]),
-            root_directory=to_upath(settings["root_directory"]),
+            index_path=to_pathref(settings["index_path"]),
+            root_directory=to_pathref(settings["root_directory"]),
             path_column=settings.get("path_column", None),
             variable_name=settings.get("variable_name",None),
         )

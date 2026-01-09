@@ -24,7 +24,7 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     try:
-        hamster_path = ctx.config.hamster.data_path
+        hamster_path = ctx.config.hamster.data_path.upath
         if not hamster_path.exists():
             if ctx.config.hamster.fallback_on_error:
                 logging.warning(

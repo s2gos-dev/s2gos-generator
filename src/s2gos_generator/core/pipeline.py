@@ -147,7 +147,7 @@ class SceneGenerationPipeline:
             # Generate meaningful prefix from XML filename if not specified
             object_id_prefix = xml_scene_config.object_id_prefix
             if object_id_prefix is None:
-                xml_path = Path(xml_scene_config.xml_path)
+                xml_path = xml_scene_config.xml_path.upath
                 object_id_prefix = xml_path.stem  # filename without extension
 
             assets, materials = load_assets_from_xml(

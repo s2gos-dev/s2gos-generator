@@ -106,7 +106,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         logging.info(f"Found {len(species_groups)} distinct species groups")
 
         for (species_name, asset_xml), instances in species_groups.items():
-            asset_basename = Path(asset_xml).stem  # Extract filename without extension
+            asset_basename = asset_xml.upath.stem  # Extract filename without extension
             binary_filename = f"{ctx.scene_name}_{species_name}_{asset_basename}.npy"
             binary_path = ctx.output_dir / binary_filename
 
@@ -157,7 +157,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         background_size_km=background_size_km,
         dem_name=ctx.config.data_sources.dem.name,
         landcover_name=ctx.config.data_sources.landcover.name,
-        material_config_path=ctx.config.data_sources.material_config_path,
+        material_config_path=ctx.config.data_sources.material_config_path.upath,
         # Use baresoil for tree areas - 3D trees handle the vegetation, surface should be soil
         landcover_mapping_overrides={
             # "tree_cover": "baresoil",  # Surface under 3D trees

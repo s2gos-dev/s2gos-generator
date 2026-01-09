@@ -5,7 +5,7 @@ import xarray as xr
 from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import expand_mapper, resolver
-from s2gos_utils.setting import to_upath
+from s2gos_utils.setting import to_pathref
 from s2gos_utils.typing import PathRef
 from shapely import Polygon, box
 
@@ -22,7 +22,7 @@ class Zarr(Dataset):
         return cls(
             name=name,
             crs=settings.get("crs", "EPSG:4326"),
-            path=to_upath(settings["path"]),
+            path=to_pathref(settings["path"]),
             variable_name=settings.get("variable_name", None),
         )
 
@@ -30,7 +30,7 @@ class Zarr(Dataset):
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path = resolver.resolve(v.upath)
+        path = resolver.resolve(v)
         if not path.exists() and path.protocol == "file":
             raise ValueError(f"Path does not exist: {v}")
         return v

@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
 from s2gos_utils.io.paths import exists, open_file
 from s2gos_utils.io.resolver import resolver
-from s2gos_utils.setting.paths import to_upath
-from s2gos_utils.typing import PathLike
+from s2gos_utils.setting.paths import to_pathref
+from s2gos_utils.typing import PathRef
 from upath import UPath
 
 from .._version import get_version
@@ -86,11 +86,11 @@ def _load_settings_data_sources_config() -> Dict[str, Any]:
     return {
         "dem" : dataset_factory(dem_settings, dem_settings.get("name", "DEM")),
         "landcover" : dataset_factory(landcover_settings, landcover_settings.get("name", "Landcover")),
-        "material_config_path" : to_upath(material_config),
+        "material_config_path" : to_pathref(material_config),
     }
 
 
-def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
+def _resolve_asset_path(filename: PathRef, asset_type: str = "asset") -> PathRef:
     """Resolve an asset path using the global resolver.
 
     This function uses the global resolver instance which includes:
@@ -110,7 +110,9 @@ def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
         ValueError: If asset cannot be found in any search path
     """
     try:
-        return str(resolver.resolve(filename, strict=True))
+        filename = PathRef(filename)
+        resolved = PathRef(resolver.resolve(filename, strict=True), cid=filename.cid)
+        return resolved
     except FileNotFoundError as e:
         # Enhance error message with asset-specific context
         search_paths = [str(p) for p in resolver.paths]
@@ -118,10 +120,10 @@ def _resolve_asset_path(filename: str, asset_type: str = "asset") -> str:
             "\n  - ".join(search_paths) if search_paths else "(none configured)"
         )
         raise ValueError(
-            f"{asset_type} file '{filename}' not found in any search path.\n"
+            f"{asset_type} file '{filename.value}' not found in any search path.\n"
             f"Searched in:\n  - {search_paths_str}\n\n"
             f"To fix this:\n"
-            f"  1. Add the directory containing '{filename}' to asset_search_paths in defaults.yaml\n"
+            f"  1. Add the directory containing '{filename.value}' to asset_search_paths in defaults.yaml\n"
             f"  2. Set S2GOS_SEARCH_PATHS environment variable with additional search paths\n"
             f"  3. Provide the full absolute path instead of just the filename"
         ) from e
@@ -132,7 +134,7 @@ class DataSources(BaseModel):
 
     dem: IndexedGeoTiff | Zarr = Field(..., description="DEM Dataset")
     landcover: IndexedGeoTiff | Zarr = Field(..., description="Landcover Dataset")
-    material_config_path: PathLike = Field(
+    material_config_path: PathRef = Field(
         ..., description="Path to custom material configuration JSON"
     )
 
@@ -158,7 +160,7 @@ class DataSources(BaseModel):
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path = resolver.resolve(UPath(v))
+        path = resolver.resolve(v)
         if not path.exists():
             raise ValueError(f"Path does not exist: {v}")
         return v
@@ -189,7 +191,7 @@ class ThermophysicalConfig(BaseModel):
     identifier: Optional[str] = Field(
         None, description="Standard atmosphere identifier (joseki)"
     )
-    thermoprops_file: Optional[PathLike] = Field(
+    thermoprops_file: Optional[PathRef] = Field(
         None,
         description="Path to CAMS thermoprops NetCDF file (alternative to identifier)",
     )
@@ -214,9 +216,8 @@ class ThermophysicalConfig(BaseModel):
     def validate_thermaproprs_path(cls, v):
         """Validate and resolve thermaproprs file path using configured search paths."""
         if v is not None:
-            v_str = str(v)
-            resolved = _resolve_asset_path(v_str, asset_type="NetCDF")
-            return UPath(resolved)
+            resolved = _resolve_asset_path(v, asset_type="NetCDF")
+            return resolved
 
     @model_validator(mode="after")
     def validate_thermoprops_source(self):
@@ -426,7 +427,7 @@ class HamsterConfig(BaseModel):
     """HAMSTER albedo data configuration for baresoil material replacement."""
 
     enabled: bool = Field(True, description="Enable HAMSTER albedo for baresoil")
-    data_path: PathLike = Field(..., description="Path to HAMSTER NetCDF data file")
+    data_path: PathRef = Field(..., description="Path to HAMSTER NetCDF data file")
     variable_name: str = Field("albedo", description="Variable name in NetCDF file")
     fallback_on_error: bool = Field(
         True, description="Fall back to standard baresoil material on errors"
@@ -440,16 +441,15 @@ class HamsterConfig(BaseModel):
     @classmethod
     def validate_data_path(cls, v):
         """Validate HAMSTER data file exists."""
-        v_str = str(v)
-        resolved = _resolve_asset_path(v_str, asset_type="netCDF")
-        return UPath(resolved)
+        resolved = _resolve_asset_path(v, asset_type="netCDF")
+        return resolved
 
 
 class UserAssets(BaseModel):
     """User assets to be placed on scene."""
 
     object_id: str = Field(..., description="Unique identifier for the object")
-    ply_path: PathLike = Field(
+    ply_path: PathRef = Field(
         ..., description="Path to PLY file containing 3D object geometry"
     )
     coordinate: list[float] = Field(
@@ -488,9 +488,8 @@ class UserAssets(BaseModel):
     @classmethod
     def validate_ply_path(cls, v):
         """Validate and resolve PLY file path using configured search paths."""
-        v_str = str(v)
-        resolved = _resolve_asset_path(v_str, asset_type="PLY mesh")
-        return UPath(resolved)
+        resolved = _resolve_asset_path(v, asset_type="PLY mesh")
+        return resolved
 
     @field_validator("material")
     @classmethod
@@ -670,7 +669,7 @@ class MaterialMapping(BaseModel):
 class XmlSceneConfig(BaseModel):
     """Configuration for importing assets and materials from XML scene files."""
 
-    xml_path: PathLike = Field(..., description="Path to XML scene file")
+    xml_path: PathRef = Field(..., description="Path to XML scene file")
     base_coordinate: Tuple[float, float] = Field(
         ..., description="Base geographic coordinate [longitude, latitude]"
     )
@@ -711,9 +710,8 @@ class XmlSceneConfig(BaseModel):
     @classmethod
     def validate_xml_path(cls, v):
         """Validate and resolve XML file path using configured search paths."""
-        v_str = str(v)
-        resolved = _resolve_asset_path(v_str, asset_type="XML scene")
-        return UPath(resolved)
+        resolved = _resolve_asset_path(v, asset_type="XML scene")
+        return resolved
 
     @field_validator("base_coordinate")
     @classmethod
@@ -745,7 +743,7 @@ class VegetationSpecies(BaseModel):
     name: str = Field(
         description="Species identifier (e.g., 'oak_trees', 'berry_bushes')"
     )
-    asset_xml_paths: Union[List[str], Dict[str, float]] = Field(
+    asset_xml_paths: Union[List[PathRef], Dict[PathRef, float]] = Field(
         description="Asset XML file path(s). Use list for uniform distribution or dict for weighted distribution"
     )
     density_per_hectare: float = Field(
@@ -931,7 +929,7 @@ class SceneGenConfig(BaseModel):
 
     location: SceneLocation = Field(..., description="Geographic location")
     data_sources: DataSources = Field(..., description="Data source configuration")
-    output_dir: PathLike = Field(
+    output_dir: PathRef = Field(
         ..., description="Output directory for generated scene"
     )
 
@@ -1016,7 +1014,7 @@ class SceneGenConfig(BaseModel):
         """Validate and create output directory if needed."""
         from s2gos_utils.io.paths import mkdir
 
-        v = UPath(v)
+        v = v.upath
         mkdir(v)
         return v
 
@@ -1056,7 +1054,7 @@ class SceneGenConfig(BaseModel):
         """Convert to dictionary for serialization."""
         return self.model_dump()
 
-    def to_json(self, path: Optional[PathLike] = None, indent: int = 2) -> str:
+    def to_json(self, path: Optional[PathRef] = None, indent: int = 2) -> str:
         """Export to JSON format."""
         json_str = self.model_dump_json(indent=indent)
         if path:
@@ -1065,7 +1063,7 @@ class SceneGenConfig(BaseModel):
         return json_str
 
     @classmethod
-    def from_json(cls, path: PathLike) -> "SceneGenConfig":
+    def from_json(cls, path: PathRef) -> SceneGenConfig:
         """Load from JSON file with version compatibility checking."""
         with open_file(path, "r") as f:
             data = json.load(f)
@@ -1073,13 +1071,14 @@ class SceneGenConfig(BaseModel):
         if "output_dir" in data and isinstance(data["output_dir"], str):
             data["output_dir"] = UPath(data["output_dir"])
 
-        if (
-            "hamster" in data
-            and data["hamster"]
-            and "data_path" in data["hamster"]
-            and isinstance(data["hamster"]["data_path"], str)
-        ):
-            data["hamster"]["data_path"] = UPath(data["hamster"]["data_path"])
+        # TODO: Not sure this is needed anymore
+        # if (
+        #     "hamster" in data
+        #     and data["hamster"]
+        #     and "data_path" in data["hamster"]
+        #     and isinstance(data["hamster"]["data_path"], str)
+        # ):
+        #     data["hamster"]["data_path"] = UPath(data["hamster"]["data_path"])
 
         # Simple version validation only
         validate_config_version(
@@ -1090,7 +1089,7 @@ class SceneGenConfig(BaseModel):
 
     def enable_hamster_albedo(
         self,
-        data_path: PathLike,
+        data_path: PathRef,
         variable_name: str = "albedo",
         fallback_on_error: bool = True,
     ):
@@ -1162,22 +1161,22 @@ class SceneGenConfig(BaseModel):
         return errors
 
     @property
-    def scene_output_dir(self) -> PathLike:
+    def scene_output_dir(self) -> UPath:
         """Get the specific output directory for this scene."""
         return self.output_dir / self.scene_name
 
     @property
-    def meshes_dir(self) -> PathLike:
+    def meshes_dir(self) -> UPath:
         """Get the meshes output directory."""
         return self.scene_output_dir / "meshes"
 
     @property
-    def textures_dir(self) -> PathLike:
+    def textures_dir(self) -> UPath:
         """Get the textures output directory."""
         return self.scene_output_dir / "textures"
 
     @property
-    def data_dir(self) -> PathLike:
+    def data_dir(self) -> UPath:
         """Get the data output directory."""
         return self.scene_output_dir / "data"
 
@@ -1197,7 +1196,7 @@ def create_scene_config(
     center_lat: float,
     center_lon: float,
     aoi_size_km: float,
-    output_dir: PathLike,
+    output_dir: PathRef,
     target_resolution_m: float = 30.0,
     description: Optional[str] = None,
     data_overrides: Optional[dict] = None,

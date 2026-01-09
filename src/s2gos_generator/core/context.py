@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from upath import UPath
+
 from .assets import SceneAssets
 from .config import SceneGenConfig
 
@@ -27,7 +29,7 @@ class SceneResourceContext:
 
         # Core configuration
         self.config = config
-        self.dependency_outputs: Dict[str, Path | None] = {}
+        self.dependency_outputs: Dict[str, UPath | None] = {}
         self.kwargs = kwargs
 
         # Asset management
@@ -54,7 +56,7 @@ class SceneResourceContext:
         self.additional_material_libraries = additional_material_libraries or []
         self.processed_objects: List = []
         self.scene_description: Optional[object] = None
-        self.hamster_data_paths: Optional[Dict[str, Path]] = None
+        self.hamster_data_paths: Optional[Dict[str, UPath]] = None
 
         # AOI polygon storage for geometric operations
         self._target_aoi_polygon: Optional[object] = None

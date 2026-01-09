@@ -3,6 +3,7 @@
 import logging
 import random
 from typing import Any, Dict, List
+import pickle
 
 import numpy as np
 import xarray as xr
@@ -11,6 +12,64 @@ from scipy.ndimage import distance_transform_edt
 
 from ..core.context import SceneResourceContext
 from ..core.exceptions import DataNotFoundError
+
+
+def _filter_by_exclusion_zones(
+    vegetation_instances: List[Dict[str, Any]],
+    ctx: SceneResourceContext,
+) -> List[Dict[str, Any]]:
+    """Filter vegetation instances by exclusion zones.
+
+    Args:
+        vegetation_instances: List of vegetation placement dicts
+        ctx: Scene resource context with exclusion zones
+
+    Returns:
+        Filtered list with instances outside exclusion zones
+    """
+    from shapely.geometry import Point
+    from shapely.strtree import STRtree
+
+    if not vegetation_instances:
+        return vegetation_instances
+
+    all_exclusion_zones = getattr(ctx, 'vegetation_exclusion_zones', [])
+    with open("test.pkl", "wb") as f:
+        pickle.dump(all_exclusion_zones, f)
+    if not all_exclusion_zones:
+        logging.info("No exclusion zones to apply")
+        return vegetation_instances
+
+    logging.info(
+        f"Applying {len(all_exclusion_zones)} exclusion zones to "
+        f"{len(vegetation_instances)} vegetation instances"
+    )
+
+    geometries = [zone["geometry"] for zone in all_exclusion_zones]
+    spatial_index = STRtree(geometries)
+
+    filtered_instances = []
+    excluded_count = 0
+
+    for instance in vegetation_instances:
+        pos = instance["position"]
+        point = Point(pos[0], pos[1])
+
+        possible_matches = spatial_index.query(point)
+        is_excluded = any(geometries[idx].contains(point) for idx in possible_matches)
+
+        if not is_excluded:
+            filtered_instances.append(instance)
+        else:
+            excluded_count += 1
+
+    logging.info(
+        f"Exclusion filtering: kept {len(filtered_instances)}, "
+        f"excluded {excluded_count} "
+        f"({100 * excluded_count / len(vegetation_instances):.1f}%)"
+    )
+
+    return filtered_instances
 
 
 def process_target_vegetation(
@@ -58,6 +117,8 @@ def process_target_vegetation(
     vegetation_instances = _process_vegetation_with_shared_datasets(
         landcover_path, dem_path, vegetation_config
     )
+    if getattr(ctx, 'vegetation_exclusion_zones', []):
+        vegetation_instances = _filter_by_exclusion_zones(vegetation_instances, ctx)
 
     ctx.vegetation_instances = vegetation_instances
 

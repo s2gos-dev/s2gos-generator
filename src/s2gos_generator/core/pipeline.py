@@ -56,7 +56,10 @@ class SceneGenerationPipeline:
             generate_background_aoi,
             generate_buffer_aoi,
         )
-        from ..resources.assets import process_user_assets
+        from ..resources.assets import (
+            process_user_assets,
+            process_vegetation_exclusion_zones,
+        )
         from ..resources.dem import process_buffer_dem, process_target_dem
         from ..resources.hamster import process_hamster_data
         from ..resources.landcover import (
@@ -110,6 +113,11 @@ class SceneGenerationPipeline:
         if self.config.user_assets or self.xml_assets:
             self.registry.register("user_assets", ["target_dem"], process_user_assets)
 
+        if self.config.vegetation_exclusion_zones:
+            self.registry.register(
+                "vegetation_exclusion_zones", [], process_vegetation_exclusion_zones
+            )
+
         if self.config.hamster and self.config.hamster.enabled:
             # HAMSTER adapts to what was registered
             hamster_deps = ["aoi"]
@@ -120,9 +128,14 @@ class SceneGenerationPipeline:
             self.registry.register("hamster_data", hamster_deps, process_hamster_data)
 
         if self.config.trees_enabled:
+            veg_deps = ["target_landcover", "target_dem"]
+
+            if self.config.vegetation_exclusion_zones:
+                veg_deps.append("vegetation_exclusion_zones")
+
             self.registry.register(
                 "target_vegetation",
-                ["target_landcover", "target_dem"],
+                veg_deps,
                 process_target_vegetation,
             )
 

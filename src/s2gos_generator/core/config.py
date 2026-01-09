@@ -473,6 +473,14 @@ class UserAssets(BaseModel):
         None,
         description="Mitsuba PLY face normals setting: True=smooth normals, False=per-face normals, None=use PLY file defaults",
     )
+    exclusion_zone: Optional[Union[float, Tuple[float, float]]] = Field(
+        None,
+        description=(
+            "Vegetation exclusion zone centered on this object. Can be:\n"
+            "- float: Circular radius in meters\n"
+            "- (width, height): Rectangular box in meters"
+        ),
+    )
 
     @field_validator("coordinate")
     @classmethod
@@ -540,6 +548,49 @@ class UserAssets(BaseModel):
         "validate_assignment": True,
         # "extra": "forbid",
     }
+
+
+class CircleGeometry(BaseModel):
+    """Circular geometry definition for vegetation exclusion zones."""
+
+    type: Literal["circle"] = "circle"
+    center: Tuple[float, float] = Field(..., description="Center as [longitude, latitude]")
+    radius: float = Field(..., gt=0, description="Radius in meters")
+
+
+class BoxGeometry(BaseModel):
+    """Rectangular box geometry definition for vegetation exclusion zones."""
+
+    type: Literal["box"] = "box"
+    center: Tuple[float, float] = Field(..., description="Center as [longitude, latitude]")
+    width: float = Field(..., gt=0, description="Width in meters (east-west)")
+    height: float = Field(..., gt=0, description="Height in meters (north-south)")
+
+
+class PolygonGeometry(BaseModel):
+    """Polygon geometry definition for vegetation exclusion zones."""
+
+    type: Literal["polygon"] = "polygon"
+    coordinates: List[Tuple[float, float]] = Field(
+        ...,
+        min_length=3,
+        description="Polygon vertices as [(lon, lat), ...]. Must have at least 3 vertices.",
+    )
+
+
+class VegetationExclusionZone(BaseModel):
+    """Standalone vegetation exclusion zone not tied to objects.
+
+    Defines a geographic area where vegetation placement is disabled.
+    Geometry can be a circle, box, or arbitrary polygon.
+    """
+
+    zone_id: str = Field(..., description="Unique identifier for this exclusion zone")
+    geometry: Union[CircleGeometry, BoxGeometry, PolygonGeometry] = Field(
+        ...,
+        discriminator="type",
+        description="Zone geometry",
+    )
 
 
 class MaterialRegion(BaseModel):
@@ -1001,6 +1052,10 @@ class SceneGenConfig(BaseModel):
     vegetation_placement: Optional[VegetationPlacementConfig] = Field(
         None,
         description="Vegetation placement configuration (None disables vegetation)",
+    )
+    vegetation_exclusion_zones: List[VegetationExclusionZone] = Field(
+        default_factory=list,
+        description="Standalone vegetation exclusion zones",
     )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"

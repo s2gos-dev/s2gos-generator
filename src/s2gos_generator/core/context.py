@@ -53,6 +53,7 @@ class SceneResourceContext:
         self.assets = SceneAssets()
         self.additional_material_libraries = additional_material_libraries or []
         self.processed_objects: List = []
+        self.vegetation_exclusion_zones: List = []
         self.scene_description: Optional[object] = None
         self.hamster_data_paths: Optional[Dict[str, Path]] = None
 

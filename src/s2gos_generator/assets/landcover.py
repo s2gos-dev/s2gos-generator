@@ -102,6 +102,8 @@ class LandCoverProcessor(BaseTileProcessor):
                 fillna_value=self.default_fill_value,
             )
 
+        clipped_landcover = clipped_landcover.rename({self.data_variable_name:"landcover"})
+
         self._save_dataset(clipped_landcover, output_path)
 
         return clipped_landcover

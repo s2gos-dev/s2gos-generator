@@ -90,6 +90,9 @@ class DEMProcessor(BaseTileProcessor):
                 clipped_dem[self.data_variable_name]
             )
 
+        # Rename data variable to a predictable name
+        clipped_dem = clipped_dem.rename({self.data_variable_name:"elevation"})
+
         self._save_dataset(clipped_dem, output_path)
 
         return clipped_dem

@@ -193,8 +193,8 @@ class BaseTileProcessor(ABC):
                 elif "lon" in dataset.dims:
                     dataset = dataset.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
 
-            # clipped_ds = dataset.rio.clip_box(*aoi_polygon.bounds, crs="EPSG:4326")
-            clipped_ds = dataset.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
+            clipped_ds = dataset.rio.clip_box(*aoi_polygon.bounds, crs="EPSG:4326")
+            clipped_ds = clipped_ds.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
 
             return clipped_ds
 

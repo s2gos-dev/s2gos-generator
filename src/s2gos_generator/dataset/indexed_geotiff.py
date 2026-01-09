@@ -5,26 +5,28 @@ from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import expand_mapper, resolver
 from s2gos_utils.io.paths import read_geofeather
 from s2gos_utils.setting import to_upath
-from s2gos_utils.typing import PathLike
+from s2gos_utils.typing import PathLike, PathRef
 from shapely import Polygon
+from upath import UPath
 
 from .dataset import Dataset
 
 
-def _load_index_gdf(index_path: PathLike):
+def _load_index_gdf(index_path: PathRef):
     """Load the index GeoDataFrame."""
-    if index_path.suffix == ".feather":
-        return read_geofeather(index_path)
+    upath = index_path.upath
+    if upath.suffix == ".feather":
+        return read_geofeather(upath)
     else:
         raise NotImplementedError(
-            f"Index path with extension {index_path.suffix} not supported."
+            f"Index path with extension {upath.suffix} not supported. "
             f"Currently supported: `.feather`"
         )
 
 
 class IndexedGeoTiff(Dataset):
-    index_path: PathLike = Field()
-    root_directory: PathLike = Field()
+    index_path: PathRef = Field()
+    root_directory: PathRef = Field()
     path_column: str | None = Field(default=None)
     variable_name: str | None = Field(default=None)
     _index_gdf: gpd.GeoDataFrame | None = PrivateAttr(default=None)
@@ -40,14 +42,11 @@ class IndexedGeoTiff(Dataset):
                     self.path_column = col
                     break
 
-    @field_validator(
-        "index_path",
-        "root_directory",
-    )
+    @field_validator("index_path", "root_directory")
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path = resolver.resolve(v)
+        path = resolver.resolve(v.upath)
         if (not path.exists()) and (path.protocol == "file"):
             raise ValueError(f"Path does not exist: {v}")
         return v
@@ -63,7 +62,7 @@ class IndexedGeoTiff(Dataset):
             variable_name=settings.get("variable_name",None),
         )
 
-    def query(self, polygon: Polygon, **kwargs) -> list[PathLike]:
+    def query(self, polygon: Polygon, **kwargs) -> list[UPath]:
         # Attempt to find a path column in the index file
         path_column = kwargs.get("path_column", self.path_column)
 
@@ -78,7 +77,8 @@ class IndexedGeoTiff(Dataset):
             raise FileNotFoundError(f"No {self.name} tiles found for the given AOI.")
 
         relative_paths = selected_products[path_column].unique()
-        filepaths = [self.root_directory / p for p in relative_paths]
+        # Use .upath to get the authenticated UPath, then join with relative paths
+        filepaths = [self.root_directory.upath / p for p in relative_paths]
 
         return filepaths
 

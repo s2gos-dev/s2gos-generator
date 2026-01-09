@@ -2,17 +2,9 @@ from dynaconf import Validator
 from dynaconf.utils.boxing import DynaBox
 from s2gos_utils.setting import settings as util_settings
 
-# def _dem_index_path(settings=None, validator=None) -> str:
-#     return "dem_index.feather"
-
-
-# def _landcover_index_path(settings=None, validator=None) -> str:
-#     return "landcover_index.feather"
-
 
 def _material_config_path(settings=None, validator=None) -> str:
     return "./materials.json"
-
 
 # Validate Generator config
 # Note that dataset validation will be done at dataset instantiation.

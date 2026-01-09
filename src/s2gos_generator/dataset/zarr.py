@@ -6,14 +6,14 @@ from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import expand_mapper, resolver
 from s2gos_utils.setting import to_upath
-from s2gos_utils.typing import PathLike
+from s2gos_utils.typing import PathRef
 from shapely import Polygon, box
 
 from .dataset import Dataset
 
 
 class Zarr(Dataset):
-    path: PathLike = Field()
+    path: PathRef = Field()
     variable_name: str | None = Field(default=None)
     _xr_engine: str = PrivateAttr("zarr")
 
@@ -21,25 +21,23 @@ class Zarr(Dataset):
     def from_settings(cls, settings: DynaBox | dict, name: str):
         return cls(
             name=name,
-            crs=settings.get("crs","EPSG:4326"),
+            crs=settings.get("crs", "EPSG:4326"),
             path=to_upath(settings["path"]),
-            variable_name=settings.get("variable_name",None),
+            variable_name=settings.get("variable_name", None),
         )
 
-    @field_validator(
-        "path",
-    )
+    @field_validator("path")
     @classmethod
     def validate_path_exists(cls, v):
         """Validate that local files or directories exist."""
-        path = resolver.resolve(v)
+        path = resolver.resolve(v.upath)
         if not path.exists() and path.protocol == "file":
             raise ValueError(f"Path does not exist: {v}")
         return v
 
 
-    def query(self, polygon: Polygon, **kwargs) -> list[PathLike]:
-        with self.open() as ds: 
+    def query(self, polygon: Polygon, **kwargs) -> list[PathRef]:
+        with self.open() as ds:
             # Detect coordinate system (fix elif bug)
             if "x" in ds.indexes and "y" in ds.indexes:
                 x_dim, y_dim = "x", "y"
@@ -51,7 +49,7 @@ class Zarr(Dataset):
                     "Cannot determine spatial overlap."
                 )
                 return []
-            
+
             dataset_crs = self.crs  # Default from Dataset base class
 
             # Compute dataset bounds efficiently
@@ -62,8 +60,10 @@ class Zarr(Dataset):
                 return []
 
             dataset_bounds = (
-                float(x_coords.min()), float(y_coords.min()),
-                float(x_coords.max()), float(y_coords.max())
+                float(x_coords.min()),
+                float(y_coords.min()),
+                float(x_coords.max()),
+                float(y_coords.max()),
             )
 
             # Create GeoPandas GeoDataFrames
@@ -76,10 +76,10 @@ class Zarr(Dataset):
 
         return [self.path] if overlaps else []
 
-     
     def open(self, path=None, **kwargs):
+        """Open the Zarr dataset with authenticated path"""
         return xr.open_dataset(
-            expand_mapper(self.path), engine=self._xr_engine, **kwargs
+            expand_mapper(self.path.upath), engine=self._xr_engine, **kwargs
         )
 
 

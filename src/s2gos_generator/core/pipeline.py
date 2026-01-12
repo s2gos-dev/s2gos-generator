@@ -165,7 +165,8 @@ class SceneGenerationPipeline:
 
             assets, materials = load_assets_from_xml(
                 xml_path=str(xml_scene_config.xml_path),
-                base_coordinate=list(xml_scene_config.base_coordinate),
+                base_coordinate=xml_scene_config.base_coordinate,
+                coord_type=xml_scene_config.coord_type,
                 object_id_prefix=object_id_prefix,
                 elevation_offset=xml_scene_config.elevation_offset,
                 scale=xml_scene_config.scale,

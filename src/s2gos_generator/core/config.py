@@ -449,15 +449,25 @@ class HamsterConfig(BaseModel):
 
 
 class UserAssets(BaseModel):
-    """User assets to be placed on scene."""
+    """User assets to be placed on scene.
+
+    Coordinates can be specified in either:
+    - Geographic coordinates (WGS84): coordinate=[lon, lat] with coord_type="geographic"
+    - Scene coordinates (meters from scene center): coordinate=[x, y] with coord_type="scene"
+    """
 
     object_id: str = Field(..., description="Unique identifier for the object")
     ply_path: PathLike = Field(
         ..., description="Path to PLY file containing 3D object geometry"
     )
+
     coordinate: list[float] = Field(
-        ..., description="Object placement coordinates [lon, lat]"
+        ..., description="Coordinates: [lon, lat] if geographic, [x, y] if scene"
     )
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
+    )
+
     material: Union[str, Dict[str, Any]] = Field(
         ...,
         description="Material reference (string ID) or inline material definition dict",
@@ -487,12 +497,7 @@ class UserAssets(BaseModel):
     def validate_coordinate(cls, v):
         """Validate coordinate format."""
         if len(v) != 2:
-            raise ValueError("Coordinate must be [longitude, latitude]")
-        lon, lat = v
-        if not (-180 <= lon <= 180):
-            raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
-        if not (-90 <= lat <= 90):
-            raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+            raise ValueError("Coordinate must be [value1, value2]")
         return v
 
     @field_validator("ply_path", mode="before")
@@ -531,6 +536,20 @@ class UserAssets(BaseModel):
             raise ValueError("Scale must be positive")
         return v
 
+    @model_validator(mode="after")
+    def validate_coordinate_format(self):
+        """Ensure coordinate format matches coord_type."""
+        if self.coord_type == "geographic":
+            lon, lat = self.coordinate
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+        elif self.coord_type == "scene":
+            pass
+
+        return self
+
     def get_inline_material_id(self) -> Optional[str]:
         """Return generated material ID for inline materials, None otherwise."""
         if isinstance(self.material, dict):
@@ -551,31 +570,107 @@ class UserAssets(BaseModel):
 
 
 class CircleGeometry(BaseModel):
-    """Circular geometry definition for vegetation exclusion zones."""
+    """Circular geometry definition for vegetation exclusion zones.
+
+    Coordinates can be specified in either:
+    - Geographic coordinates (WGS84): center=(lon, lat) with coord_type="geographic"
+    - Scene coordinates (meters from scene center): center=(x, y) with coord_type="scene"
+    """
 
     type: Literal["circle"] = "circle"
-    center: Tuple[float, float] = Field(..., description="Center as [longitude, latitude]")
+
+    center: Tuple[float, float] = Field(
+        ..., description="Center: (lon, lat) if geographic, (x, y) if scene"
+    )
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
+    )
+
     radius: float = Field(..., gt=0, description="Radius in meters")
+
+    @model_validator(mode="after")
+    def validate_coordinate_format(self):
+        """Ensure coordinate format matches coord_type."""
+        if self.coord_type == "geographic":
+            lon, lat = self.center
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+
+        return self
 
 
 class BoxGeometry(BaseModel):
-    """Rectangular box geometry definition for vegetation exclusion zones."""
+    """Rectangular box geometry definition for vegetation exclusion zones.
+
+    Coordinates can be specified in either:
+    - Geographic coordinates (WGS84): center=(lon, lat) with coord_type="geographic"
+    - Scene coordinates (meters from scene center): center=(x, y) with coord_type="scene"
+    """
 
     type: Literal["box"] = "box"
-    center: Tuple[float, float] = Field(..., description="Center as [longitude, latitude]")
+
+    center: Tuple[float, float] = Field(
+        ..., description="Center: (lon, lat) if geographic, (x, y) if scene"
+    )
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
+    )
+
     width: float = Field(..., gt=0, description="Width in meters (east-west)")
     height: float = Field(..., gt=0, description="Height in meters (north-south)")
 
+    @model_validator(mode="after")
+    def validate_coordinate_format(self):
+        """Ensure coordinate format matches coord_type."""
+        if self.coord_type == "geographic":
+            lon, lat = self.center
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+
+        return self
+
 
 class PolygonGeometry(BaseModel):
-    """Polygon geometry definition for vegetation exclusion zones."""
+    """Polygon geometry definition for vegetation exclusion zones.
+
+    Coordinates can be specified in either:
+    - Geographic coordinates (WGS84): coordinates=[(lon, lat), ...] with coord_type="geographic"
+    - Scene coordinates (meters from scene center): coordinates=[(x, y), ...] with coord_type="scene"
+    """
 
     type: Literal["polygon"] = "polygon"
+
     coordinates: List[Tuple[float, float]] = Field(
         ...,
         min_length=3,
-        description="Polygon vertices as [(lon, lat), ...]. Must have at least 3 vertices.",
+        description="Vertices: [(lon, lat), ...] if geographic, [(x, y), ...] if scene. Min 3 vertices.",
     )
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
+    )
+
+    @model_validator(mode="after")
+    def validate_coordinate_format(self):
+        """Ensure coordinate format matches coord_type and vertex count."""
+        if len(self.coordinates) < 3:
+            raise ValueError("Polygon must have at least 3 vertices")
+
+        if self.coord_type == "geographic":
+            for i, (lon, lat) in enumerate(self.coordinates):
+                if not (-180 <= lon <= 180):
+                    raise ValueError(
+                        f"Vertex {i}: Longitude {lon} out of range [-180, 180]"
+                    )
+                if not (-90 <= lat <= 90):
+                    raise ValueError(
+                        f"Vertex {i}: Latitude {lat} out of range [-90, 90]"
+                    )
+
+        return self
 
 
 class VegetationExclusionZone(BaseModel):
@@ -722,12 +817,22 @@ class MaterialMapping(BaseModel):
 
 
 class XmlSceneConfig(BaseModel):
-    """Configuration for importing assets and materials from XML scene files."""
+    """Configuration for importing assets and materials from XML scene files.
+
+    Coordinates can be specified in either:
+    - Geographic coordinates (WGS84): base_coordinate=(lon, lat) with coord_type="geographic"
+    - Scene coordinates (meters from scene center): base_coordinate=(x, y) with coord_type="scene"
+    """
 
     xml_path: PathLike = Field(..., description="Path to XML scene file")
+
     base_coordinate: Tuple[float, float] = Field(
-        ..., description="Base geographic coordinate [longitude, latitude]"
+        ..., description="Base coordinates: (lon, lat) if geographic, (x, y) if scene"
     )
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
+    )
+
     object_id_prefix: Optional[str] = Field(
         None, description="Prefix for asset object IDs"
     )
@@ -772,15 +877,22 @@ class XmlSceneConfig(BaseModel):
     @field_validator("base_coordinate")
     @classmethod
     def validate_base_coordinate(cls, v):
-        """Validate base coordinate format."""
+        """Validate coordinate format."""
         if len(v) != 2:
-            raise ValueError("Base coordinate must be [longitude, latitude]")
-        lon, lat = v
-        if not (-180 <= lon <= 180):
-            raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
-        if not (-90 <= lat <= 90):
-            raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+            raise ValueError("Base coordinate must be (value1, value2)")
         return v
+
+    @model_validator(mode="after")
+    def validate_coordinate_format(self):
+        """Ensure coordinate format matches coord_type."""
+        if self.coord_type == "geographic":
+            lon, lat = self.base_coordinate
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
+
+        return self
 
     model_config = {
         "arbitrary_types_allowed": True,
@@ -997,7 +1109,8 @@ class SceneGenConfig(BaseModel):
         default=False, description="Apply seasonal snow adjustment to terrain materials"
     )
     snow_season_month: Optional[Month] = Field(
-        default=None, description="Month for seasonal snow calculation (June or December)"
+        default=None,
+        description="Month for seasonal snow calculation (June or December)",
     )
     snow_material_index: int = Field(
         default=6, description="Material index to use for snow coverage"
@@ -1005,7 +1118,7 @@ class SceneGenConfig(BaseModel):
     snow_thermoprops: Optional[ThermophysicalConfig] = Field(
         None,
         description="Optional CAMS thermoprops for snow temperature calculation. "
-                    "If None, uses synthetic temperature model."
+        "If None, uses synthetic temperature model.",
     )
 
     processing: ProcessingOptions = Field(
@@ -1435,7 +1548,8 @@ def create_heterogeneous_atmosphere_config(
 
 def load_assets_from_xml(
     xml_path: str,
-    base_coordinate: List[float],
+    base_coordinate: Union[List[float], Tuple[float, float]],
+    coord_type: Literal["geographic", "scene"],
     object_id_prefix: str = "asset",
     elevation_offset: float = 0.0,
     scale: float = 1.0,
@@ -1450,7 +1564,8 @@ def load_assets_from_xml(
 
     Args:
         xml_path: Path to Mitsuba XML file
-        base_coordinate: [longitude, latitude] for all asset components
+        base_coordinate: Base coordinates (lon, lat) or (x, y)
+        coord_type: "geographic" or "scene"
         object_id_prefix: Prefix for asset IDs
         elevation_offset: Height offset above terrain (meters)
         scale: Uniform scaling factor
@@ -1465,7 +1580,6 @@ def load_assets_from_xml(
         Tuple of (assets_list, material_library):
         - assets_list: List of UserAssets with string material references
         - material_library: Dict of material definitions to embed in scene
-
     """
     from ..assets.xml_importer import import_xml_assets
 
@@ -1483,6 +1597,7 @@ def load_assets_from_xml(
     asset_data_list, material_library = import_xml_assets(
         xml_path=xml_path,
         base_coordinate=base_coordinate,
+        coord_type=coord_type,
         object_id_prefix=object_id_prefix,
         elevation_offset=elevation_offset,
         scale=scale,
@@ -1499,13 +1614,14 @@ def load_assets_from_xml(
         asset_kwargs = {
             "object_id": asset_data["object_id"],
             "ply_path": UPath(asset_data["ply_path"]),
-            "coordinate": asset_data["coordinate"],
             "material": asset_data["material"],
             "elevation_offset": asset_data["elevation_offset"],
             "scale": asset_data["scale"],
             "rotation_x": asset_data["rotation_x"],
             "rotation_y": asset_data["rotation_y"],
             "rotation_z": asset_data["rotation_z"],
+            "coordinate": base_coordinate,
+            "coord_type": coord_type,
         }
 
         if "face_normals" in asset_data:

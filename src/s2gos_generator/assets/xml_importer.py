@@ -33,7 +33,8 @@ def _sanitize_material_id(material_id: str) -> str:
 
 def import_xml_assets(
     xml_path: str,
-    base_coordinate: List[float],
+    base_coordinate: Tuple[float, float],
+    coord_type: str,
     object_id_prefix: str = "asset",
     elevation_offset: float = 0.0,
     scale: float = 1.0,
@@ -48,7 +49,8 @@ def import_xml_assets(
 
     Args:
         xml_path: Path to Mitsuba XML file
-        base_coordinate: [longitude, latitude] for all components
+        base_coordinate: Base coordinates (lon, lat) or (x, y)
+        coord_type: "geographic" or "scene"
         object_id_prefix: Prefix for asset IDs
         elevation_offset: Height offset above terrain (meters)
         scale: Uniform scaling factor
@@ -64,17 +66,9 @@ def import_xml_assets(
         - assets_list: List of asset dicts with string material references
         - material_library: Dict of {material_id: material_definition}
     """
-    if not isinstance(base_coordinate, (list, tuple)) or len(base_coordinate) != 2:
+    if len(base_coordinate) != 2:
         raise ValueError(
-            f"base_coordinate must be a list/tuple of exactly 2 elements [longitude, latitude], got: {base_coordinate}"
-        )
-
-    try:
-        float(base_coordinate[0])
-        float(base_coordinate[1])
-    except (ValueError, TypeError):
-        raise ValueError(
-            f"base_coordinate values must be numeric, got: {base_coordinate}"
+            f"base_coordinate must be a list/tuple of exactly 2 elements, got: {base_coordinate}"
         )
 
     logging.info(f"Importing assets from XML: {xml_path}")
@@ -138,7 +132,6 @@ def import_xml_assets(
         asset_data = {
             "object_id": f"{object_id_prefix}_{ply_filename}",
             "ply_path": shape["file"],
-            "coordinate": base_coordinate.copy(),
             "material": material_ref,
             "elevation_offset": elevation_offset,
             "scale": scale,

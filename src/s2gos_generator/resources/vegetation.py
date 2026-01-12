@@ -3,7 +3,6 @@
 import logging
 import random
 from typing import Any, Dict, List
-import pickle
 
 import numpy as np
 import xarray as xr
@@ -33,9 +32,7 @@ def _filter_by_exclusion_zones(
     if not vegetation_instances:
         return vegetation_instances
 
-    all_exclusion_zones = getattr(ctx, 'vegetation_exclusion_zones', [])
-    with open("test.pkl", "wb") as f:
-        pickle.dump(all_exclusion_zones, f)
+    all_exclusion_zones = getattr(ctx, "vegetation_exclusion_zones", [])
     if not all_exclusion_zones:
         logging.info("No exclusion zones to apply")
         return vegetation_instances
@@ -117,7 +114,7 @@ def process_target_vegetation(
     vegetation_instances = _process_vegetation_with_shared_datasets(
         landcover_path, dem_path, vegetation_config
     )
-    if getattr(ctx, 'vegetation_exclusion_zones', []):
+    if getattr(ctx, "vegetation_exclusion_zones", []):
         vegetation_instances = _filter_by_exclusion_zones(vegetation_instances, ctx)
 
     ctx.vegetation_instances = vegetation_instances

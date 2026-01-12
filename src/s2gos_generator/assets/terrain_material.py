@@ -152,9 +152,15 @@ class TerrainMaterialGenerator:
             selection_texture[mask] = material_index
 
         # Apply seasonal snow adjustment if requested
-        if dem_data is not None and season_month is not None and snow_material_index is not None:
+        if (
+            dem_data is not None
+            and season_month is not None
+            and snow_material_index is not None
+        ):
             if coordinate_system is None:
-                logging.warning("Seasonal snow requested but coordinate_system not provided, skipping snow adjustment")
+                logging.warning(
+                    "Seasonal snow requested but coordinate_system not provided, skipping snow adjustment"
+                )
             else:
                 selection_texture = self._apply_seasonal_snow(
                     selection_texture=selection_texture,
@@ -316,7 +322,7 @@ class TerrainMaterialGenerator:
         y_coords = landcover_data.coords["y"].values  # meters (scene Y)
         x_coords = landcover_data.coords["x"].values  # meters (scene X)
 
-        y_grid_scene, x_grid_scene = np.meshgrid(y_coords, x_coords, indexing='ij')
+        y_grid_scene, x_grid_scene = np.meshgrid(y_coords, x_coords, indexing="ij")
 
         center_x = coordinate_system._center_x
         center_y = coordinate_system._center_y
@@ -336,15 +342,22 @@ class TerrainMaterialGenerator:
         thermoprops_dataset = None
         if snow_thermoprops is not None:
             try:
-                thermoprops_dataset = xr.open_dataset(snow_thermoprops).squeeze(drop=True)
+                thermoprops_dataset = xr.open_dataset(snow_thermoprops).squeeze(
+                    drop=True
+                )
 
-                if 't' not in thermoprops_dataset.data_vars:
+                if "t" not in thermoprops_dataset.data_vars:
                     raise ValueError("Missing required variable 't' (temperature)")
-                if 'z' not in thermoprops_dataset.coords and 'z' not in thermoprops_dataset.data_vars:
-                    raise ValueError("Missing required coordinate/variable 'z' (height)")
+                if (
+                    "z" not in thermoprops_dataset.coords
+                    and "z" not in thermoprops_dataset.data_vars
+                ):
+                    raise ValueError(
+                        "Missing required coordinate/variable 'z' (height)"
+                    )
 
-                z_min = float(thermoprops_dataset['z'].min())
-                z_max = float(thermoprops_dataset['z'].max())
+                z_min = float(thermoprops_dataset["z"].min())
+                z_max = float(thermoprops_dataset["z"].max())
                 logging.info(
                     f"Using CAMS temperature profile: z={z_min:.1f}-{z_max:.1f} km, "
                     f"{len(thermoprops_dataset['z'])} levels"

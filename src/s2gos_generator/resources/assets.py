@@ -3,9 +3,30 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 from ..core.context import SceneResourceContext
+
+
+def _convert_to_scene_coords(
+    coordinate: Union[Tuple[float, float], List[float]],
+    coord_type: Literal["geographic", "scene"],
+    coords,
+) -> Tuple[float, float]:
+    """Convert coordinates to scene coordinate system.
+
+    Args:
+        coordinate: Either (lon, lat) or (x, y) depending on coord_type
+        coord_type: "geographic" or "scene"
+        coords: CoordinateSystem instance for conversion
+
+    Returns:
+        (scene_x, scene_y) in scene coordinates
+    """
+    if coord_type == "geographic":
+        lon, lat = coordinate
+        return coords.latlon_to_scene(lat, lon)
+    return tuple(coordinate)
 
 
 def _create_asset_exclusion_zone(
@@ -66,19 +87,27 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
 
     for i, asset in enumerate(ctx.user_assets):
         try:
-            lon, lat = asset.coordinate
-            scene_x, scene_y = coords.latlon_to_scene(lat, lon)
-            elevation = coords.query_height_from_dem(lat, lon, target_dem_path)
+            if asset.coord_type == "geographic":
+                lon, lat = asset.coordinate
+                scene_x, scene_y = coords.latlon_to_scene(lat, lon)
+                elevation = coords.query_height_from_dem(lat, lon, target_dem_path)
+            else:
+                scene_x, scene_y = asset.coordinate
+                lat, lon = coords.scene_to_latlon(scene_x, scene_y)
+                elevation = coords.query_height_from_dem(lat, lon, target_dem_path)
+
             final_z = elevation + asset.elevation_offset
 
             if asset.exclusion_zone is not None:
                 geometry = _create_asset_exclusion_zone(
                     scene_x, scene_y, asset.exclusion_zone
                 )
-                exclusion_zones.append({
-                    "source": f"asset_{asset.object_id}",
-                    "geometry": geometry,
-                })
+                exclusion_zones.append(
+                    {
+                        "source": f"asset_{asset.object_id}",
+                        "geometry": geometry,
+                    }
+                )
 
                 if isinstance(asset.exclusion_zone, (int, float)):
                     logging.info(
@@ -131,7 +160,9 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
     if inline_materials:
         logging.info(f"Extracted {len(inline_materials)} inline material definitions")
     if exclusion_zones:
-        logging.info(f"Extracted {len(exclusion_zones)} vegetation exclusion zones from assets")
+        logging.info(
+            f"Extracted {len(exclusion_zones)} vegetation exclusion zones from assets"
+        )
     return objects_dir
 
 
@@ -159,12 +190,15 @@ def process_vegetation_exclusion_zones(ctx: SceneResourceContext) -> list[dict]:
         try:
             geom = zone_config.geometry
             if isinstance(geom, CircleGeometry):
-                lat, lon = geom.center
-                scene_x, scene_y = coords.latlon_to_scene(lat, lon)
+                scene_x, scene_y = _convert_to_scene_coords(
+                    geom.center, geom.coord_type, coords
+                )
                 geometry = Point(scene_x, scene_y).buffer(geom.radius)
+
             elif isinstance(geom, BoxGeometry):
-                lat, lon = geom.center
-                scene_x, scene_y = coords.latlon_to_scene(lat, lon)
+                scene_x, scene_y = _convert_to_scene_coords(
+                    geom.center, geom.coord_type, coords
+                )
                 half_w, half_h = geom.width / 2, geom.height / 2
                 geometry = box(
                     scene_x - half_w,
@@ -174,19 +208,27 @@ def process_vegetation_exclusion_zones(ctx: SceneResourceContext) -> list[dict]:
                 )
 
             elif isinstance(geom, PolygonGeometry):
-                scene_coords = [
-                    coords.latlon_to_scene(lat, lon) for lat, lon in geom.coordinates
-                ]
+                if geom.coord_type == "geographic":
+                    scene_coords = [
+                        coords.latlon_to_scene(lat, lon)
+                        for lon, lat in geom.coordinates
+                    ]
+                else:
+                    scene_coords = list(geom.coordinates)
                 geometry = Polygon(scene_coords)
 
             else:
-                logging.warning(f"Unknown geometry type for zone '{zone_config.zone_id}'")
+                logging.warning(
+                    f"Unknown geometry type for zone '{zone_config.zone_id}'"
+                )
                 continue
 
-            exclusion_zones.append({
-                "source": f"zone_{zone_config.zone_id}",
-                "geometry": geometry,
-            })
+            exclusion_zones.append(
+                {
+                    "source": f"zone_{zone_config.zone_id}",
+                    "geometry": geometry,
+                }
+            )
             logging.info(f"Processed exclusion zone '{zone_config.zone_id}'")
 
         except Exception as e:
@@ -195,5 +237,7 @@ def process_vegetation_exclusion_zones(ctx: SceneResourceContext) -> list[dict]:
             )
 
     ctx.vegetation_exclusion_zones.extend(exclusion_zones)
-    logging.info(f"Processed {len(exclusion_zones)} standalone vegetation exclusion zones")
+    logging.info(
+        f"Processed {len(exclusion_zones)} standalone vegetation exclusion zones"
+    )
     return None

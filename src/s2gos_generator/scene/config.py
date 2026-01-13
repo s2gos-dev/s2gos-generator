@@ -360,8 +360,6 @@ def create_s2gos_scene(
         "vegetation_collection_references", None
     )
     if vegetation_collection_references:
-        from s2gos_utils import resolver
-
         from ..assets.xml_importer import create_tree_shapegroup
         from ..resources.vegetation import load_vegetation_collection_binary
 
@@ -383,7 +381,7 @@ def create_s2gos_scene(
                     vegetation_xml_file = vegetation_collection.get(
                         "model_file", "tree.xml"
                     )
-                    vegetation_xml_path = resolver.resolve(vegetation_xml_file)
+                    vegetation_xml_path = vegetation_xml_file.upath
                     asset_basename = vegetation_xml_path.stem
 
                     vegetation_shapegroup, vegetation_materials = (

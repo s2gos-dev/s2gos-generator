@@ -7,10 +7,9 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from s2gos_utils import validate_config_version
-from s2gos_utils.io.paths import exists, open_file
+from s2gos_utils.io.paths import PathRef, exists, open_file
 from s2gos_utils.io.resolver import resolver
 from s2gos_utils.setting.paths import to_pathref
-from s2gos_utils.typing import PathRef
 from upath import UPath
 
 from .._version import get_version
@@ -662,7 +661,7 @@ class MaterialMapping(BaseModel):
 
     model_config = {
         "validate_assignment": True,
-        "extra": "forbid",
+        # "extra": "forbid",
     }
 
 
@@ -1013,8 +1012,6 @@ class SceneGenConfig(BaseModel):
     def validate_output_dir(cls, v):
         """Validate and create output directory if needed."""
         from s2gos_utils.io.paths import mkdir
-
-        v = v.upath
         mkdir(v)
         return v
 
@@ -1161,22 +1158,22 @@ class SceneGenConfig(BaseModel):
         return errors
 
     @property
-    def scene_output_dir(self) -> UPath:
+    def scene_output_dir(self) -> PathRef:
         """Get the specific output directory for this scene."""
         return self.output_dir / self.scene_name
 
     @property
-    def meshes_dir(self) -> UPath:
+    def meshes_dir(self) -> PathRef:
         """Get the meshes output directory."""
         return self.scene_output_dir / "meshes"
 
     @property
-    def textures_dir(self) -> UPath:
+    def textures_dir(self) -> PathRef:
         """Get the textures output directory."""
         return self.scene_output_dir / "textures"
 
     @property
-    def data_dir(self) -> UPath:
+    def data_dir(self) -> PathRef:
         """Get the data output directory."""
         return self.scene_output_dir / "data"
 

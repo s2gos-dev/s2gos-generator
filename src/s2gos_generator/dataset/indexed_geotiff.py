@@ -3,9 +3,8 @@ import xarray as xr
 from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import expand_mapper, resolver
-from s2gos_utils.io.paths import read_geofeather
+from s2gos_utils.io.paths import PathRef, read_geofeather
 from s2gos_utils.setting import to_pathref
-from s2gos_utils.typing import PathRef
 from shapely import Polygon
 from upath import UPath
 

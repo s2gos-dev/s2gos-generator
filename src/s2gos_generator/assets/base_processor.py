@@ -186,15 +186,30 @@ class BaseTileProcessor(ABC):
         try:
             if not hasattr(dataset.rio, "crs") or dataset.rio.crs is None:
                 dataset = dataset.rio.write_crs("EPSG:4326")
+                
+            bounds = aoi_polygon.bounds
+            
+            if "x" in dataset.dims:
+                x_dim = "x"
+                y_dim = "y"
+            elif "lon" in dataset.dims:
+                x_dim = "lon"
+                y_dim = "lat"
+            
+            lon_min, lat_min, lon_max, lat_max = aoi_polygon.bounds
+
+            # Slices depend on the dimension direction, which can flip when merging
+            lon = dataset[x_dim]
+            lat = dataset[y_dim]
+            lon_slice = slice(lon_min, lon_max) if lon[0] < lon[-1] else slice(lon_max, lon_min)
+            lat_slice = slice(lat_min, lat_max) if lat[0] < lat[-1] else slice(lat_max, lat_min)
+            # Select an area of computation lazily to cater for netcdf and zarr formats
+            dataset = dataset.sel({x_dim:lon_slice, y_dim:lat_slice})
 
             if not hasattr(dataset.rio, "_x_dim") or dataset.rio._x_dim is None:
-                if "x" in dataset.dims:
-                    dataset = dataset.rio.set_spatial_dims(x_dim="x", y_dim="y")
-                elif "lon" in dataset.dims:
-                    dataset = dataset.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
+                dataset = dataset.rio.set_spatial_dims(x_dim=x_dim, y_dim=y_dim)
 
-            clipped_ds = dataset.rio.clip_box(*aoi_polygon.bounds, crs="EPSG:4326")
-            clipped_ds = clipped_ds.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
+            clipped_ds = dataset.rio.clip([aoi_polygon], crs="EPSG:4326", drop=True)
 
             return clipped_ds
 

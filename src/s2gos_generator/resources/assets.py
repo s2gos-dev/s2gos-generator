@@ -129,6 +129,7 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
                 "position": [scene_x, scene_y, final_z],
                 "scale": asset.scale,
                 "rotation": [asset.rotation_x, asset.rotation_y, asset.rotation_z],
+                "blender_fix": asset.blender_fix,
             }
 
             if asset.material:

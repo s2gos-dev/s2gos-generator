@@ -129,6 +129,13 @@ def import_xml_assets(
             final_rotation_y = rotation_y
             final_rotation_z = rotation_z
 
+        if abs(final_rotation_x) < 1e-10:
+            final_rotation_x = 0.0
+        if abs(final_rotation_y) < 1e-10:
+            final_rotation_y = 0.0
+        if abs(final_rotation_z) < 1e-10:
+            final_rotation_z = 0.0
+
         asset_data = {
             "object_id": f"{object_id_prefix}_{ply_filename}",
             "ply_path": shape["file"],
@@ -138,6 +145,7 @@ def import_xml_assets(
             "rotation_x": final_rotation_x,
             "rotation_y": final_rotation_y,
             "rotation_z": final_rotation_z,
+            "blender_fix": fix_blender_coords,
         }
 
         if "face_normals" in shape:

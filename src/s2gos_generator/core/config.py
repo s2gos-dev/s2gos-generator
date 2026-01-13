@@ -479,6 +479,10 @@ class UserAssets(BaseModel):
     rotation_x: float = Field(0.0, description="Rotation around X-axis in degrees")
     rotation_y: float = Field(0.0, description="Rotation around Y-axis in degrees")
     rotation_z: float = Field(0.0, description="Rotation around Z-axis in degrees")
+    blender_fix: bool = Field(
+        ...,
+        description="Informs as to whether a 90 degree around x was added to adjust from blender, useful to know what the actual rotation intended was",
+    )
     face_normals: Optional[bool] = Field(
         None,
         description="Mitsuba PLY face normals setting: True=smooth normals, False=per-face normals, None=use PLY file defaults",
@@ -1620,6 +1624,9 @@ def load_assets_from_xml(
             "rotation_x": asset_data["rotation_x"],
             "rotation_y": asset_data["rotation_y"],
             "rotation_z": asset_data["rotation_z"],
+            "blender_fix": asset_data.get(
+                "blender_fix", fix_blender_coords
+            ),  # Use value from asset_data, fall back to parameter
             "coordinate": base_coordinate,
             "coord_type": coord_type,
         }

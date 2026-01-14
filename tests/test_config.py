@@ -36,20 +36,78 @@ def mock_path_validation(monkeypatch):
 
     monkeypatch.setattr("upath.core.UPath.exists", mock_upath_exists)
 
-    def mock_resolve(filename: str, asset_type: str = "asset") -> str:
-        return str(filename)
+    def mock_resolve(filename, asset_type: str = "asset"):
+        """Mock that properly returns PathRef objects."""
+        from s2gos_utils.io import PathRef
+
+        # Handle both string input and PathRef input
+        if isinstance(filename, PathRef):
+            return filename
+        elif isinstance(filename, dict):
+            # When deserializing from JSON, Pydantic passes the dict representation
+            return PathRef(filename.get("value"), filename.get("cid"))
+        else:
+            # String input
+            return PathRef(filename, None)
 
     monkeypatch.setattr("s2gos_generator.core.config._resolve_asset_path", mock_resolve)
 
+    # Create a mock resolver object with a resolve method
+    class MockResolver:
+        def resolve(self, path, strict=True):
+            """Mock resolver to always return a UPath that exists."""
+            from s2gos_utils.io import PathRef
+            from upath import UPath
+
+            if isinstance(path, PathRef):
+                return path.upath
+            else:
+                return UPath(path)
+
+    # Replace the resolver instance in both indexed_geotiff and zarr modules
+    mock_resolver = MockResolver()
+    monkeypatch.setattr(
+        "s2gos_generator.dataset.indexed_geotiff.resolver", mock_resolver
+    )
+    monkeypatch.setattr("s2gos_generator.dataset.zarr.resolver", mock_resolver)
+    monkeypatch.setattr("s2gos_generator.core.config.resolver", mock_resolver)
+
     def mock_settings() -> Dict[str, Any]:
+        """Mock settings to return Dataset objects instead of paths."""
+        from s2gos_utils.io import PathRef
+        from upath import UPath
+
+        from s2gos_generator.dataset import IndexedGeoTiff
+
+        # Create mock datasets
+        mock_dem = IndexedGeoTiff(
+            name="DEM",
+            index_path=PathRef("/mock/dem_index.feather", None),
+            root_directory=PathRef("/mock/dem", None),
+        )
+        mock_landcover = IndexedGeoTiff(
+            name="Landcover",
+            index_path=PathRef("/mock/landcover_index.feather", None),
+            root_directory=PathRef("/mock/landcover", None),
+        )
+
         return {
-            "dem_index_path": "/mock/dem_index.feather",
-            "dem_root_dir": "/mock/dem",
-            "landcover_index_path": "/mock/landcover_index.feather",
-            "landcover_root_dir": "/mock/landcover",
-            "material_config_path": "/mock/materials.json",
+            "dem": mock_dem,
+            "landcover": mock_landcover,
+            "material_config_path": PathRef("/mock/materials.json", None),
         }
 
+    # Mock the _load_index_gdf to avoid actual file loading
+    def mock_load_index_gdf(index_path):
+        """Mock index loading to return empty GeoDataFrame."""
+        import geopandas as gpd
+
+        return gpd.GeoDataFrame({"path": [], "geometry": []}, crs="EPSG:4326")
+
+    monkeypatch.setattr(
+        "s2gos_generator.dataset.indexed_geotiff._load_index_gdf",
+        mock_load_index_gdf,
+    )
     monkeypatch.setattr(
         "s2gos_generator.core.config._load_settings_data_sources_config",
         mock_settings,
@@ -208,6 +266,10 @@ def test_model_serialization(model_class, fixture_name, type_value, request):
 
 
 def test_minimal_scene_config_serialization(tmp_path):
+    from s2gos_utils.io import PathRef
+
+    from s2gos_generator.dataset import IndexedGeoTiff
+
     (tmp_path / "dem_index.feather").touch()
     (tmp_path / "dem").mkdir()
     (tmp_path / "landcover_index.feather").touch()
@@ -215,17 +277,27 @@ def test_minimal_scene_config_serialization(tmp_path):
     (tmp_path / "materials.json").touch()
     (tmp_path / "output").mkdir()
 
+    # Create Dataset objects
+    dem_dataset = IndexedGeoTiff(
+        name="DEM",
+        index_path=PathRef(tmp_path / "dem_index.feather", None),
+        root_directory=PathRef(tmp_path / "dem", None),
+    )
+    landcover_dataset = IndexedGeoTiff(
+        name="Landcover",
+        index_path=PathRef(tmp_path / "landcover_index.feather", None),
+        root_directory=PathRef(tmp_path / "landcover", None),
+    )
+
     config = SceneGenConfig(
         scene_name="test_scene",
         location=SceneLocation(center_lat=45.0, center_lon=15.0, aoi_size_km=10.0),
         data_sources={
-            "dem_index_path": str(tmp_path / "dem_index.feather"),
-            "dem_root_dir": str(tmp_path / "dem"),
-            "landcover_index_path": str(tmp_path / "landcover_index.feather"),
-            "landcover_root_dir": str(tmp_path / "landcover"),
-            "material_config_path": str(tmp_path / "materials.json"),
+            "dem": dem_dataset,
+            "landcover": landcover_dataset,
+            "material_config_path": PathRef(tmp_path / "materials.json", None),
         },
-        output_dir=str(tmp_path / "output"),
+        output_dir=PathRef(tmp_path / "output", None),
     )
 
     json_str = config.model_dump_json()
@@ -244,6 +316,10 @@ def test_minimal_scene_config_serialization(tmp_path):
 
 
 def test_scene_config_round_trip(tmp_path):
+    from s2gos_utils.io import PathRef
+
+    from s2gos_generator.dataset import IndexedGeoTiff
+
     (tmp_path / "dem_index.feather").touch()
     (tmp_path / "dem").mkdir()
     (tmp_path / "landcover_index.feather").touch()
@@ -251,17 +327,27 @@ def test_scene_config_round_trip(tmp_path):
     (tmp_path / "materials.json").touch()
     (tmp_path / "output").mkdir()
 
+    # Create Dataset objects
+    dem_dataset = IndexedGeoTiff(
+        name="DEM",
+        index_path=PathRef(tmp_path / "dem_index.feather", None),
+        root_directory=PathRef(tmp_path / "dem", None),
+    )
+    landcover_dataset = IndexedGeoTiff(
+        name="Landcover",
+        index_path=PathRef(tmp_path / "landcover_index.feather", None),
+        root_directory=PathRef(tmp_path / "landcover", None),
+    )
+
     original = SceneGenConfig(
         scene_name="test_scene",
         location=SceneLocation(center_lat=45.0, center_lon=15.0, aoi_size_km=10.0),
         data_sources={
-            "dem_index_path": str(tmp_path / "dem_index.feather"),
-            "dem_root_dir": str(tmp_path / "dem"),
-            "landcover_index_path": str(tmp_path / "landcover_index.feather"),
-            "landcover_root_dir": str(tmp_path / "landcover"),
-            "material_config_path": str(tmp_path / "materials.json"),
+            "dem": dem_dataset,
+            "landcover": landcover_dataset,
+            "material_config_path": PathRef(tmp_path / "materials.json", None),
         },
-        output_dir=str(tmp_path / "output"),
+        output_dir=PathRef(tmp_path / "output", None),
     )
 
     json_str = original.model_dump_json()

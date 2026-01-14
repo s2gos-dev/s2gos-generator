@@ -1,10 +1,10 @@
 import logging
 
 import geopandas as gpd
-import xarray as xr
 from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
-from s2gos_utils.io import PathRef, expand_mapper, resolver
+from s2gos_utils.io import PathRef, resolver
+from s2gos_utils.io.paths import open_dataset
 from s2gos_utils.setting import to_pathref
 from shapely import Polygon, box
 
@@ -77,8 +77,6 @@ class Zarr(Dataset):
 
     def open(self, path=None, **kwargs):
         """Open the Zarr dataset with authenticated path"""
-        return xr.open_dataset(
-            expand_mapper(self.path.upath), engine=self._xr_engine, **kwargs
-        )
+        return open_dataset(self.path, engine=self._xr_engine, **kwargs)
 
 

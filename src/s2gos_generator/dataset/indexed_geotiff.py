@@ -1,9 +1,8 @@
 import geopandas as gpd
-import xarray as xr
 from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
-from s2gos_utils.io import expand_mapper, resolver
-from s2gos_utils.io.paths import PathRef, read_geofeather
+from s2gos_utils.io import resolver
+from s2gos_utils.io.paths import PathRef, open_dataset, read_geofeather
 from s2gos_utils.setting import to_pathref
 from shapely import Polygon
 from upath import UPath
@@ -82,4 +81,4 @@ class IndexedGeoTiff(Dataset):
         return filepaths
 
     def open(self, path, **kwargs):
-        return xr.open_dataset(expand_mapper(path), engine=self._xr_engine, **kwargs)
+        return open_dataset(path, engine=self._xr_engine, **kwargs)

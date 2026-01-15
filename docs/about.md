@@ -2,7 +2,7 @@
 
 ## Development
 
-The S2GOS Generator uses [pixi](https://pixi.sh/dev/) to manage the project. You can install the development environemnt using
+The S2GOS Generator uses [pixi](https://pixi.sh/dev/) to manage the project. You can install the development environment using
 
 ```bash
 pixi install -e dev

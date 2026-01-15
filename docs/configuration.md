@@ -1,108 +1,96 @@
 # Configuration
 
-The S2GOS generator is configured through a `s2gos_settings.yaml` file. The generator automatically searches for this file by climbing up the directory tree from your script's location.
+The S2GOS generator is configured through `s2gos_settings.yaml`. The package searches for this file by climbing up the directory tree from your script's location.
 
 ## Installation Modes
 
 The configuration structure depends on your installation:
 
-- **Standalone** (`s2gos-generator` only): Requires `common` and `generator` sections.
-- **Monorepo** (with `s2gos-simulator`): Includes `common`, `generator`, and `simulator` sections.
+- `common`: Shared settings (see [s2gos-utils configuration](../../s2gos-utils/docs/configuration.md))
+- `generator`: Generator-specific settings (this page)
+- `simulator`: Simulator-specific settings (see s2gos-simulator docs)
 
 ## Configuration Example
 
 ```yaml
 # s2gos_settings.yaml
-## ========================================================================== ##
 common:
-    ## List of data paths to always add to the file resolver
-    search_paths : [
-        "/home/martonn/Projects/s2gos/s2gos/packages/s2gos-generator/resources/data",
-        "/home/martonn/Projects/s2gos/s2gos/data",
-    ]
+    search_paths:
+        - "./resources/data"
+        - "./data"
 
-
-## ========================================================================== ##
 generator:
-    # Datasets source paths.
-    datasets:
+    dataset:
         dem:
-            type : "indexed-geotiff"
-            root_directory : <local directory>
-            index_path : <local path>
+            name: "Copernicus-DEM-30"
+            crs: "EPSG:4326"
+            type: indexed-geotiff
+            root_directory: "/path/to/dem/tiles"
+            index_path: "/path/to/dem_index.feather"
+            path_column: "path_dem"
+            variable_name: elevation
 
         landcover:
-            type : "zarr"
-            path : 
-                value: "s3://path/to/worldcover.zarr"
-                protocol : "s3"
-                endpoint_url : <endpoint_url>
-                key : <key>
-                secret : <secret>
+            name: "ESA Worldcover 2021"
+            crs: "EPSG:4326"
+            type: zarr
+            path:
+                value: "s3://bucket/worldcover.zarr"
+                cid: "my_s3_creds"
+            variable_name: landcover
 
-    config:
-        material : "./some/local/path/to_json.json"
-        material_2 : 
-            value : "some/other/path"
-            protocol : "https"
-
-
-
-# Optional: Only needed in monorepo with s2gos-simulator
-# simulator:
-# See s2gos-simulator documentation for available options
+    files:
+        material_config: "./materials.json"
 ```
 
 ## Configuration Sections
 
 ### `common` - Shared Settings
 
-Settings used by both generator and simulator packages.
+See [s2gos-utils configuration](../../s2gos-utils/docs/configuration.md).
 
-#### `search_paths`
-*List of paths, optional (default: empty list)*
+### `generator.dataset` - Dataset Sources
 
-Prioritized list of directories for resolving relative file paths. The file resolver searches these paths in order and returns the first match. Useful for locating resource files (materials.json, ephemeris data) and index files across different environments.
+#### `dem`, **Dataset**, *required*
 
-Paths can be absolute or relative. Local paths are automatically resolved, and remote paths (s3://, etc.) are supported. Environment override available via `S2GOS_SEARCH_PATHS`.
+Digital Elevation Model dataset. Tested with Copernicus DEM 30m.
 
-### `generator.datasets` - Data Sources
+#### `landcover`, **Dataset**, *required*
 
-Specifies locations of geospatial datasets and data files. The following keywords are currently accepted:
-- `dem`: the location to the Copernicus DEM.
-- `landcover`: the location the ESA WorldCover tiles.
-- `material`: the location to the material configuration JSON file.
+Land cover classification dataset. Tested with ESA WorldCover 2021.
 
-A dataset/file is a nested object that requires the following keyword: 
-- `type`: specifies the type of dataset or file being used.
+### Dataset Types
 
-[specify the alias method]
+Datasets are specified as subobjects with a `type` field. Paths use **PathRef** format:
+- `value`: URI string (local or remote)
+- `cid`: Credential ID (optional) - see [Credentials](../../s2gos-utils/docs/credentials.md)
 
-##### `dem_root_dir`
-*Path string, required*
+#### Common Parameters
 
-Root directory containing Copernicus DEM tiles. Can be absolute or relative (resolved via search_paths).
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No | Dataset name (defaults to key name) |
+| `crs` | string | No | CRS (default: `EPSG:4326`) |
+| `type` | string | Yes | Dataset type |
 
-##### `landcover_root_dir`
-*Path string, required*
+#### Indexed GeoTiff (`type: indexed-geotiff`)
 
-Root directory containing ESA WorldCover tiles. Can be absolute or relative (resolved via search_paths).
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `root_directory` | PathRef | Yes | Directory containing GeoTIFF tiles |
+| `index_path` | PathRef | Yes | Feather index file with tile paths |
+| `variable_name` | string | No | Data variable name |
+| `path_column` | string | No | Column with file paths (auto-detected) |
 
-##### `dem_index_path`
-*Path string, optional (default: "dem_index.feather")*
+#### Zarr (`type: zarr`)
 
-Path to DEM tile catalog in Feather format. Relative paths resolved via search_paths.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | PathRef | Yes | Path to Zarr archive |
+| `variable_name` | string | No | Data variable name |
 
-##### `landcover_index_path`
-*Path string, optional (default: "landcover_index.feather")*
+### `generator.files` - Additional Files
 
-Path to land cover tile catalog in Feather format. Relative paths resolved via search_paths.
+#### `material_config`, **PathRef**, *optional*
 
-##### `material_config_path`
-*Path string, optional (default: "materials.json")*
-
-Path to materials configuration defining optical properties for land cover classes. Relative paths resolved via search_paths.
-
-### `[simulator]` - Simulator Settings (Optional)
-
-When installed in a monorepo with s2gos-simulator, simulator-specific settings can be included here. See s2gos-simulator documentation for available options.
+Path to materials JSON defining optical properties for land cover classes. Default: `materials.json` (resolved via `search_paths`).

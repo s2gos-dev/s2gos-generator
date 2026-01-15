@@ -54,7 +54,7 @@ dev = [
     "jupyterlab>=4.4.3,<5",
     "ipykernel>=6.29.5,<7",
 ]
-docs = ["mkdocs"]
+docs = ["mkdocs","mkdocs-material>=9.7.1,<10"]
 
 [tool.pixi.environments]
 default = { solve-group = "default" }

@@ -1,3 +1,6 @@
-# DTE-S2GOS Synthetic Scene Generator
+# S2GOS Generator
 
-*TBD*
+3D synthetic scene generator for radiative transfer simulations.
+
+- **[Configuration](configuration.md)** - Generator settings via `s2gos_settings.yaml`
+- **[About](about.md)** - Development setup and license

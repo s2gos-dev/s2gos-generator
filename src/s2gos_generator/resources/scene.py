@@ -170,6 +170,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         additional_material_libraries=additional_material_libraries,
         vegetation_collection_references=vegetation_collection_references,
         region_material_indices=getattr(ctx, "region_material_indices", None),
+        random_seed=ctx.config.random_seed,
     )
 
     # Save scene description to file

@@ -1,7 +1,11 @@
 """Scene-specific resource context for pipeline execution."""
 
+import logging
+import random
 from pathlib import Path
 from typing import Dict, List, Optional
+
+import numpy as np
 
 from .assets import SceneAssets
 from .config import SceneGenConfig
@@ -63,6 +67,14 @@ class SceneResourceContext:
         self._background_aoi_polygon: Optional[object] = None
 
         self._coord_system: Optional[object] = None
+
+        # Seed random generators for reproducibility
+        if config.random_seed is not None:
+            random.seed(config.random_seed)
+            np.random.seed(config.random_seed)
+            logging.info(
+                f"Random seed set to {config.random_seed} for reproducible generation"
+            )
 
     @property
     def user_assets(self):

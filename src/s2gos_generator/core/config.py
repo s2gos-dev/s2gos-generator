@@ -1174,6 +1174,11 @@ class SceneGenConfig(BaseModel):
         default_factory=list,
         description="Standalone vegetation exclusion zones",
     )
+    random_seed: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Random seed for reproducible scene generation. If None, uses system entropy.",
+    )
     created_at: datetime = Field(
         default_factory=datetime.now, description="Configuration creation time"
     )

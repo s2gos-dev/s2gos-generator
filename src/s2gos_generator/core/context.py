@@ -41,10 +41,10 @@ class SceneResourceContext:
         )
 
         # Direct computed properties from config
-        self.output_dir = config.scene_output_dir
-        self.data_dir = config.data_dir
-        self.meshes_dir = config.meshes_dir
-        self.textures_dir = config.textures_dir
+        self.output_dir = config.scene_output_dir.upath
+        self.data_dir = config.data_dir.upath
+        self.meshes_dir = config.meshes_dir.upath
+        self.textures_dir = config.textures_dir.upath
         self.scene_name = config.scene_name
         self.center_lat = config.location.center_lat
         self.center_lon = config.location.center_lon

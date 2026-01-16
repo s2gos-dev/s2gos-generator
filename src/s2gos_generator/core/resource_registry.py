@@ -158,6 +158,10 @@ class ResourceRegistry:
             ) or category == "optional":
                 optional_dependencies.append(resource_id)
 
+        # Include target_vegetation if registered (it provides data to scene_description)
+        if "target_vegetation" in self.resources:
+            optional_dependencies.append("target_vegetation")
+
         # Update scene_description dependencies
         scene_resource = self.resources["scene_description"]
         scene_resource.dependencies = base_dependencies + optional_dependencies

@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from s2gos_utils.io.paths import PathRef
 from s2gos_utils.scene import SceneDescription
 from s2gos_utils.scene.materials import Material, get_landcover_mapping, load_materials
 from upath import UPath
@@ -381,7 +382,7 @@ def create_s2gos_scene(
                     vegetation_xml_file = vegetation_collection.get(
                         "model_file", "tree.xml"
                     )
-                    vegetation_xml_path = vegetation_xml_file.upath
+                    vegetation_xml_path = PathRef(vegetation_xml_file).upath
                     asset_basename = vegetation_xml_path.stem
 
                     vegetation_shapegroup, vegetation_materials = (

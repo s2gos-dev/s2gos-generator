@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from s2gos_utils.io.paths import PathRef
+
 from ..core.context import SceneResourceContext
 from ..scene import create_s2gos_scene
 
@@ -76,7 +78,20 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
 
     additional_material_libraries = getattr(ctx, "additional_material_libraries", None)
 
-    vegetation_instances = getattr(ctx, "vegetation_instances", None)
+    # Load vegetation from file (primary) or context (backwards compatibility)
+    vegetation_instances = None
+    vegetation_file = ctx.dependency_outputs.get("target_vegetation")
+    if vegetation_file is not None:
+        from .vegetation import load_vegetation_json
+
+        vegetation_instances = load_vegetation_json(vegetation_file)
+        logging.info(
+            f"Loaded {len(vegetation_instances)} vegetation instances from {vegetation_file}"
+        )
+    else:
+        # Backwards compatibility: check context
+        vegetation_instances = getattr(ctx, "vegetation_instances", None)
+
     vegetation_collection_references = []
 
     region_materials = getattr(ctx, "region_materials", None)
@@ -105,8 +120,8 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
 
         logging.info(f"Found {len(species_groups)} distinct species groups")
 
-        for (species_name, asset_xml), instances in species_groups.items():
-            asset_basename = asset_xml.upath.stem  # Extract filename without extension
+        for (species_name, asset_xml), instances in species_groups.items(): 
+            asset_basename = PathRef(asset_xml).upath.stem  # Extract filename without extension
             binary_filename = f"{ctx.scene_name}_{species_name}_{asset_basename}.npy"
             binary_path = ctx.output_dir / binary_filename
 

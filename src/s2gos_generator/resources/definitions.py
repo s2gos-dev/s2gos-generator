@@ -213,7 +213,6 @@ SCENE_RESOURCES = [
         "dependencies": ["target_landcover", "target_dem"],
         "func": process_target_vegetation,
         "hash_spec": HashSpec(config_paths=["vegetation_placement"]),
-        "stateful": True,
         "condition": lambda cfg: cfg.trees_enabled,
     },
     # === Final scene description (always included) ===

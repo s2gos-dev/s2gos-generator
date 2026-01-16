@@ -1,29 +1,86 @@
 """Vegetation placement resource."""
 
+import hashlib
+import json
 import logging
 import random
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import distance_transform_edt
+from upath import UPath
 
 from ..core.context import SceneResourceContext
 from ..core.exceptions import DataNotFoundError
 
 
+def save_vegetation_json(
+    vegetation_instances: List[Dict[str, Any]], output_path: Union[Path, UPath]
+) -> None:
+    """Save vegetation instances to JSON file.
+
+    Args:
+        vegetation_instances: List of vegetation dictionaries
+        output_path: Path where to save the JSON file
+    """
+    # Convert any non-serializable types
+    serializable_instances = []
+    for instance in vegetation_instances:
+        serializable_instance = {}
+        for key, value in instance.items():
+            if hasattr(value, "upath"):
+                # Convert PathRef to string
+                serializable_instance[key] = str(value.upath)
+            elif isinstance(value, (Path, UPath)):
+                serializable_instance[key] = str(value)
+            else:
+                serializable_instance[key] = value
+        serializable_instances.append(serializable_instance)
+
+    with open(output_path, "w") as f:
+        json.dump(serializable_instances, f)
+
+    logging.info(
+        f"Saved {len(vegetation_instances)} vegetation instances to {output_path}"
+    )
+
+
+def load_vegetation_json(input_path: Union[Path, UPath]) -> List[Dict[str, Any]]:
+    """Load vegetation instances from JSON file.
+
+    Args:
+        input_path: Path to the JSON file
+
+    Returns:
+        List of vegetation dictionaries
+    """
+    from s2gos_utils.io.paths import exists
+
+    if not exists(input_path):
+        logging.warning(f"Vegetation JSON file not found: {input_path}")
+        return []
+
+    with open(input_path, "r") as f:
+        instances = json.load(f)
+
+    logging.info(f"Loaded {len(instances)} vegetation instances from {input_path}")
+    return instances
+
+
 def process_target_vegetation(
     ctx: SceneResourceContext,
-) -> List[Dict[str, Any]]:
+) -> Optional[Union[Path, UPath]]:
     """Process multi-species vegetation placement using landcover data.
 
     Args:
         ctx: Scene resource context
 
     Returns:
-        List of vegetation placement dictionaries with position, rotation, species data.
-        Returns empty list if vegetation is disabled or not configured.
+        Path to JSON file containing vegetation placement data.
+        Returns None if vegetation is disabled or not configured.
 
     Raises:
         DataNotFoundError: If required landcover or DEM data is missing
@@ -31,7 +88,7 @@ def process_target_vegetation(
     vegetation_config = ctx.config.vegetation_placement
     if vegetation_config is None or not vegetation_config.enabled:
         logging.info("Vegetation disabled - skipping vegetation placement")
-        return []
+        return None
 
     landcover_path = ctx.dependency_outputs.get("target_landcover")
     dem_path = ctx.dependency_outputs.get("target_dem")
@@ -55,17 +112,28 @@ def process_target_vegetation(
     if not exists(dem_path):
         raise DataNotFoundError(f"DEM file not found: {dem_path}")
 
+    # Compute deterministic seed from cache hash for reproducibility
+    seed = None
+    if ctx.cache_hash:
+        seed = int(hashlib.md5(ctx.cache_hash.encode()).hexdigest()[:8], 16)
+        logging.info(f"Using deterministic seed {seed} from cache hash {ctx.cache_hash}")
+
     vegetation_instances = _process_vegetation_with_shared_datasets(
-        landcover_path, dem_path, vegetation_config
+        landcover_path, dem_path, vegetation_config, seed=seed
     )
 
-    ctx.vegetation_instances = vegetation_instances
+    # Save to JSON file with hash suffix
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    output_filename = f"{ctx.scene_name}_vegetation{hash_suffix}.json"
+    output_path = ctx.output_dir / output_filename
 
-    return vegetation_instances
+    save_vegetation_json(vegetation_instances, output_path)
+
+    return output_path
 
 
 def _process_vegetation_with_shared_datasets(
-    landcover_path, dem_path, vegetation_config
+    landcover_path, dem_path, vegetation_config, seed: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """Multi-species vegetation processing with shared dataset loading for better performance.
 
@@ -73,11 +141,17 @@ def _process_vegetation_with_shared_datasets(
         landcover_path: Path to landcover data file
         dem_path: Path to DEM data file
         vegetation_config: Vegetation placement configuration with species mapping
+        seed: Optional random seed for reproducible vegetation placement
 
     Returns:
         List of vegetation placement dictionaries with position, rotation, and species data.
         Returns empty list if no species configured.
     """
+    # Set random seeds for reproducibility
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
     if not vegetation_config.landcover_species_mapping:
         logging.info("No species configured for vegetation - skipping")
         return []

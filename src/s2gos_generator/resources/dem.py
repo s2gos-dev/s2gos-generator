@@ -22,7 +22,8 @@ def process_target_dem(ctx: SceneResourceContext) -> Optional[Path]:
         dataset=ctx.config.data_sources.dem
     )
 
-    dem_filename = f"dem_{ctx.scene_name}_{ctx.target_resolution_m}m.zarr"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    dem_filename = f"dem_{ctx.scene_name}_{ctx.target_resolution_m}m{hash_suffix}.zarr"
     dem_output_path = ctx.data_dir / dem_filename
 
     aoi_polygon = ctx._target_aoi_polygon
@@ -61,7 +62,8 @@ def process_buffer_dem(ctx: SceneResourceContext) -> Optional[Path]:
     )
 
     buffer_resolution_m = ctx.config.buffer_resolution_m
-    dem_filename = f"dem_buffer_{ctx.scene_name}_{buffer_resolution_m}m.zarr"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    dem_filename = f"dem_buffer_{ctx.scene_name}_{buffer_resolution_m}m{hash_suffix}.zarr"
     dem_output_path = ctx.data_dir / dem_filename
 
     buffer_aoi_polygon = ctx._buffer_aoi_polygon

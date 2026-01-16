@@ -24,7 +24,8 @@ def generate_target_mesh(ctx: SceneResourceContext) -> Optional[Path]:
 
     mesh_generator = MeshGenerator()
 
-    mesh_path = ctx.meshes_dir / f"{ctx.scene_name}_terrain.ply"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    mesh_path = ctx.meshes_dir / f"{ctx.scene_name}_terrain{hash_suffix}.ply"
 
     _ = mesh_generator.generate_mesh_from_dem_file(
         dem_file_path=dem_file_path,
@@ -55,7 +56,8 @@ def generate_buffer_mesh(ctx: SceneResourceContext) -> Optional[Path]:
 
     mesh_generator = MeshGenerator()
 
-    mesh_path = ctx.meshes_dir / f"{ctx.scene_name}_buffer_terrain.ply"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    mesh_path = ctx.meshes_dir / f"{ctx.scene_name}_buffer_terrain{hash_suffix}.ply"
 
     _ = mesh_generator.generate_mesh_from_dem_file(
         dem_file_path=buffer_dem_file_path,

@@ -173,7 +173,8 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
     )
 
     # Save scene description to file
-    scene_description_file = ctx.output_dir / f"{ctx.scene_name}.yml"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    scene_description_file = ctx.output_dir / f"{ctx.scene_name}{hash_suffix}.yml"
     scene_description.save_yaml(scene_description_file)
 
     # Store in assets

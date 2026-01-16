@@ -22,7 +22,8 @@ def process_target_landcover(ctx: SceneResourceContext) -> Optional[Path]:
         dataset=ctx.config.data_sources.landcover,
     )
 
-    landcover_filename = f"landcover_{ctx.scene_name}_{ctx.target_resolution_m}m.zarr"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    landcover_filename = f"landcover_{ctx.scene_name}_{ctx.target_resolution_m}m{hash_suffix}.zarr"
     landcover_output_path = ctx.data_dir / landcover_filename
 
     aoi_polygon = ctx._target_aoi_polygon
@@ -63,8 +64,9 @@ def process_buffer_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     )
 
     buffer_resolution_m = ctx.config.buffer_resolution_m
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
     landcover_filename = (
-        f"landcover_buffer_{ctx.scene_name}_{buffer_resolution_m}m.zarr"
+        f"landcover_buffer_{ctx.scene_name}_{buffer_resolution_m}m{hash_suffix}.zarr"
     )
     landcover_output_path = ctx.data_dir / landcover_filename
 
@@ -105,8 +107,9 @@ def process_background_landcover(ctx: SceneResourceContext) -> Optional[Path]:
     )
 
     background_resolution_m = ctx.config.background_resolution_m
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
     landcover_filename = (
-        f"landcover_background_{ctx.scene_name}_{background_resolution_m}m.zarr"
+        f"landcover_background_{ctx.scene_name}_{background_resolution_m}m{hash_suffix}.zarr"
     )
     landcover_output_path = ctx.data_dir / landcover_filename
 

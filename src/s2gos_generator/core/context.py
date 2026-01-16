@@ -58,6 +58,9 @@ class SceneResourceContext:
         self.scene_description: Optional[object] = None
         self.hamster_data_paths: Optional[Dict[str, UPath]] = None
 
+        # Cache hash for output filename construction (set by DAGExecutor)
+        self.cache_hash: str = ""
+
         # AOI polygon storage for geometric operations
         self._target_aoi_polygon: Optional[object] = None
         self._buffer_aoi_polygon: Optional[object] = None

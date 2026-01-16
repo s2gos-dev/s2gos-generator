@@ -1,9 +1,13 @@
 """Clean resource registry and DAG execution without singleton pattern."""
 
+import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from pydantic import BaseModel
+from upath import UPath
+
+from .cache import CacheManifest, HashSpec, compute_hash
 
 
 class ResourceContext(BaseModel):
@@ -160,23 +164,84 @@ class ResourceRegistry:
 
 
 class DAGExecutor:
-    """Executes resources in dependency order."""
+    """Executes resources in dependency order with caching support."""
 
-    def __init__(self, registry: ResourceRegistry):
+    def __init__(
+        self,
+        registry: ResourceRegistry,
+        hash_specs: Dict[str, HashSpec] = None,
+        stateful_ids: Set[str] = None,
+        cache_enabled: bool = True,
+    ):
         self.registry = registry
+        self.hash_specs = hash_specs or {}
+        self.stateful_ids = stateful_ids or set()
+        self.cache_enabled = cache_enabled
+        self._manifest: Optional[CacheManifest] = None
+        self._hashes: Dict[str, str] = {}
 
-    def execute(self, context: ResourceContext) -> Dict[str, Any]:
-        """Execute all resources in dependency order."""
+    def execute(
+        self,
+        context: ResourceContext,
+        force_rebuild: Optional[Set[str]] = None,
+    ) -> Dict[str, Any]:
+        """Execute all resources in dependency order with cache checking."""
         execution_order = self.registry.get_execution_order()
         results = {}
+        force_rebuild = force_rebuild or set()
+
+        # Initialize cache manifest
+        if self.cache_enabled and hasattr(context, "config"):
+            cache_dir = context.config.scene_output_dir.upath
+            self._manifest = CacheManifest(cache_dir)
 
         for resource_id in execution_order:
             try:
                 resource = self.registry.get_resource(resource_id)
                 context.dependency_outputs = results
-                result = resource(context)
-                results[resource_id] = result
+
+                # Compute hash for this resource
+                current_hash = self._compute_hash(resource_id, context)
+                self._hashes[resource_id] = current_hash
+
+                # Check cache
+                cached_entry = None
+                if self._manifest and resource_id not in force_rebuild:
+                    cached_entry = self._manifest.get(resource_id, current_hash)
+
+                # Resources that modify context state must always execute
+                is_stateful = resource_id in self.stateful_ids
+
+                # cached_entry can be:
+                # - UPath: file path that exists (use as cache hit)
+                # - True: non-file resource was computed (need to re-execute for state)
+                # - None: no cache entry
+                is_file_cache_hit = isinstance(cached_entry, (Path, UPath))
+
+                if is_file_cache_hit and not is_stateful:
+                    results[resource_id] = cached_entry
+                    logging.info(f"Cache hit: {resource_id} ({current_hash[:8]})")
+                else:
+                    # Set cache hash for filename construction
+                    context.cache_hash = current_hash[:8]
+                    result = resource(context)
+                    results[resource_id] = result
+
+                    if self._manifest:
+                        self._manifest.set(resource_id, current_hash, result)
+
             except Exception as e:
                 raise RuntimeError(f"Resource '{resource_id}' failed: {e}") from e
 
+        # Save manifest
+        if self._manifest:
+            self._manifest.save()
+
         return results
+
+    def _compute_hash(self, resource_id: str, context: ResourceContext) -> str:
+        """Compute hash for a resource based on its config dependencies."""
+        spec = self.hash_specs.get(resource_id, HashSpec())
+        resource = self.registry.get_resource(resource_id)
+        dep_hashes = {dep: self._hashes.get(dep, "") for dep in resource.dependencies}
+        return compute_hash(resource_id, context.config, spec, dep_hashes)

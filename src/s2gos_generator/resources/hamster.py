@@ -80,13 +80,14 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
         )
 
         result_paths = {}
+        hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
 
         if ctx._target_aoi_polygon is not None:
             path = _crop_and_save_area(
                 albedo_data,
                 "target",
                 ctx.aoi_size_km,
-                f"hamster_{ctx.scene_name}_target_{ctx.target_resolution_m}m.zarr",
+                f"hamster_{ctx.scene_name}_target_{ctx.target_resolution_m}m{hash_suffix}.zarr",
                 ctx.data_dir,
                 var_name,
             )
@@ -98,7 +99,7 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
                 albedo_data,
                 "buffer",
                 ctx.config.buffer_size_km,
-                f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer_resolution_m}m.zarr",
+                f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer_resolution_m}m{hash_suffix}.zarr",
                 ctx.data_dir,
                 var_name,
             )
@@ -110,7 +111,7 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
                 albedo_data,
                 "background",
                 ctx.config.background_size_km,
-                f"hamster_{ctx.scene_name}_background_{ctx.config.background_resolution_m}m.zarr",
+                f"hamster_{ctx.scene_name}_background_{ctx.config.background_resolution_m}m{hash_suffix}.zarr",
                 ctx.data_dir,
                 var_name,
             )

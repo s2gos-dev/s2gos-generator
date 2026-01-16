@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from s2gos_utils.io.paths import mkdir
 from s2gos_utils.scene import SceneDescription
@@ -10,6 +10,7 @@ from s2gos_utils.scene import SceneDescription
 from .config import SceneGenConfig
 from .context import SceneResourceContext
 from .resource_registry import DAGExecutor, ResourceRegistry
+from ..resources.definitions import get_resources_for_config, get_stateful_resource_ids
 
 
 class SceneGenerationPipeline:
@@ -31,7 +32,9 @@ class SceneGenerationPipeline:
         self.xml_assets = []
         self.xml_material_libraries = []
         self.registry = ResourceRegistry()
-        self.executor = DAGExecutor(self.registry)
+        self._hash_specs = {}
+        self._stateful_ids = set()
+        self.executor = None  # Created during run() with proper settings
         self._initialized = False
 
     def initialize(self):
@@ -49,89 +52,27 @@ class SceneGenerationPipeline:
         logging.info(f"Pipeline initialized for scene '{self.config.scene_name}'")
 
     def _register_resources(self):
-        """Explicitly register all resources with their dependencies."""
-        # Import resource functions
-        from ..resources.aoi import (
-            generate_aoi,
-            generate_background_aoi,
-            generate_buffer_aoi,
-        )
-        from ..resources.assets import process_user_assets
-        from ..resources.dem import process_buffer_dem, process_target_dem
-        from ..resources.hamster import process_hamster_data
-        from ..resources.landcover import (
-            process_background_landcover,
-            process_buffer_landcover,
-            process_target_landcover,
-        )
-        from ..resources.mesh import generate_buffer_mesh, generate_target_mesh
-        from ..resources.scene import create_scene_description
-        from ..resources.texture import (
-            generate_background_texture,
-            generate_buffer_texture,
-            generate_target_texture,
-        )
-        from ..resources.vegetation import process_target_vegetation
+        """Register resources from the pipeline definition."""
+        resources = get_resources_for_config(self.config, self.xml_assets)
 
-        # Register resources with their dependencies
+        for res in resources:
+            resource_id = res["id"]
 
-        # Core resources - always included
-        self.registry.register("aoi", [], generate_aoi)
-        self.registry.register("target_dem", ["aoi"], process_target_dem)
-        self.registry.register("target_landcover", ["aoi"], process_target_landcover)
-        self.registry.register("target_mesh", ["target_dem"], generate_target_mesh)
-        self.registry.register(
-            "target_texture", ["target_landcover"], generate_target_texture
-        )
+            # Handle dynamic dependencies for hamster_data
+            dependencies = res["dependencies"]
+            if res.get("dynamic_deps") and resource_id == "hamster_data":
+                # HAMSTER adapts to what's been registered so far
+                dependencies = ["aoi"]
+                if any(r["id"] == "buffer_aoi" for r in resources):
+                    dependencies.append("buffer_aoi")
+                if any(r["id"] == "background_aoi" for r in resources):
+                    dependencies.append("background_aoi")
 
-        if self.config.enable_buffer:
-            self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
-            self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
-            self.registry.register(
-                "buffer_landcover", ["buffer_aoi"], process_buffer_landcover
-            )
-            self.registry.register("buffer_mesh", ["buffer_dem"], generate_buffer_mesh)
-            self.registry.register(
-                "buffer_texture", ["buffer_landcover"], generate_buffer_texture
-            )
+            self.registry.register(resource_id, dependencies, res["func"])
+            self._hash_specs[resource_id] = res["hash_spec"]
 
-        if self.config.enable_background:
-            self.registry.register("background_aoi", ["aoi"], generate_background_aoi)
-            self.registry.register(
-                "background_landcover", ["background_aoi"], process_background_landcover
-            )
-            self.registry.register(
-                "background_texture",
-                ["background_landcover"],
-                generate_background_texture,
-            )
-
-        # Optional resources
-        if self.config.user_assets or self.xml_assets:
-            self.registry.register("user_assets", ["target_dem"], process_user_assets)
-
-        if self.config.hamster and self.config.hamster.enabled:
-            # HAMSTER adapts to what was registered
-            hamster_deps = ["aoi"]
-            if "buffer_aoi" in self.registry.resources:
-                hamster_deps.append("buffer_aoi")
-            if "background_aoi" in self.registry.resources:
-                hamster_deps.append("background_aoi")
-            self.registry.register("hamster_data", hamster_deps, process_hamster_data)
-
-        if self.config.trees_enabled:
-            self.registry.register(
-                "target_vegetation",
-                ["target_landcover", "target_dem"],
-                process_target_vegetation,
-            )
-
-        # Scene description (dependencies will be updated by update_scene_dependencies)
-        self.registry.register(
-            "scene_description",
-            ["target_mesh", "target_texture"],
-            create_scene_description,
-        )
+        # Collect stateful resource IDs
+        self._stateful_ids = set(get_stateful_resource_ids())
 
     def _get_all_assets(self):
         """Get combined list of config assets + XML assets without mutating config."""
@@ -226,13 +167,29 @@ class SceneGenerationPipeline:
         """
         return self.run()
 
-    def run(self) -> SceneDescription:
+    def run(
+        self,
+        force_rebuild: Optional[Set[str]] = None,
+        disable_cache: bool = False,
+    ) -> SceneDescription:
         """Execute the complete scene generation pipeline.
+
+        Args:
+            force_rebuild: Set of resource IDs to force rebuild (ignoring cache)
+            disable_cache: If True, disable all caching
 
         Returns:
             SceneDescription instance with complete scene configuration
         """
         self.initialize()
+
+        # Configure executor with caching settings
+        self.executor = DAGExecutor(
+            self.registry,
+            hash_specs=self._hash_specs,
+            stateful_ids=self._stateful_ids,
+            cache_enabled=not disable_cache,
+        )
 
         try:
             # Collect region materials if defined
@@ -253,7 +210,7 @@ class SceneGenerationPipeline:
                 ctx.region_materials = region_materials
 
             # Execute all resources using DAG executor
-            _ = self.executor.execute(ctx)
+            _ = self.executor.execute(ctx, force_rebuild=force_rebuild)
             scene_description = getattr(ctx, "scene_description", None)
             if scene_description is None:
                 raise RuntimeError("Scene description not found in pipeline results")
@@ -385,3 +342,66 @@ class SceneGenerationPipeline:
         for group_name, resource_ids in resource_groups.items():
             if resource_ids:
                 logging.info(f"{group_name}: {', '.join(resource_ids)}")
+
+    def clear_cache(
+        self,
+        resource_ids: Optional[List[str]] = None,
+        delete_files: bool = True,
+    ) -> List[Path]:
+        """Clear cache for specified resources or all.
+
+        Args:
+            resource_ids: List of resource IDs to clear (None = all)
+            delete_files: If True, also delete the cached output files
+
+        Returns:
+            List of deleted file paths
+        """
+        from .cache import CacheManifest
+
+        cache_dir = self.config.scene_output_dir.upath
+        manifest = CacheManifest(cache_dir)
+
+        files_to_delete = manifest.clear(resource_ids)
+
+        deleted = []
+        if delete_files:
+            for path in files_to_delete:
+                try:
+                    if path.is_dir():
+                        import shutil
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink()
+                    deleted.append(path)
+                    logging.info(f"Deleted cached file: {path}")
+                except Exception as e:
+                    logging.warning(f"Failed to delete {path}: {e}")
+
+        manifest.save()
+
+        if resource_ids:
+            logging.info(f"Cleared cache for resources: {resource_ids}")
+        else:
+            logging.info("Cleared all cached resource hashes")
+
+        return deleted
+
+    def get_cache_status(self) -> Dict[str, Dict[str, str]]:
+        """Get current cache status for all resources.
+
+        Returns:
+            Dictionary mapping resource IDs to their cached hash→path entries
+        """
+        from .cache import CacheManifest
+
+        cache_dir = self.config.scene_output_dir.upath
+        manifest = CacheManifest(cache_dir)
+
+        self.initialize()
+        status = {}
+        for resource_id in self.registry.resources.keys():
+            entries = manifest.get_all_entries(resource_id)
+            status[resource_id] = entries
+
+        return status

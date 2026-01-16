@@ -24,7 +24,8 @@ def process_user_assets(ctx: SceneResourceContext) -> Optional[Path]:
     processed_objects = []
     inline_materials = {}
 
-    objects_dir = ctx.output_dir / "objects"
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
+    objects_dir = ctx.output_dir / f"objects{hash_suffix}"
     mkdir(objects_dir)
 
     target_dem_path = ctx.dependency_outputs["target_dem"]

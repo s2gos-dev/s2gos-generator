@@ -133,13 +133,14 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
 
     material_gen = TerrainMaterialGenerator()
 
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
     resolution_str = f"{ctx.target_resolution_m}m"
 
     selection_texture_path, preview_texture_path = (
         material_gen.generate_textures_from_file(
             landcover_file_path=landcover_file_path,
             output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_{resolution_str}",
+            base_name=f"{ctx.scene_name}_{resolution_str}{hash_suffix}",
             create_preview=ctx.config.processing.generate_texture_preview,
             dem_file_path=dem_file_path,
             season_month=season_month,
@@ -201,6 +202,7 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
 
     material_gen = TerrainMaterialGenerator()
 
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
     buffer_resolution_m = ctx.config.buffer_resolution_m
     resolution_str = f"{buffer_resolution_m}m"
 
@@ -208,7 +210,7 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
         material_gen.generate_textures_from_file(
             landcover_file_path=buffer_landcover_file_path,
             output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_buffer_{resolution_str}",
+            base_name=f"{ctx.scene_name}_buffer_{resolution_str}{hash_suffix}",
             create_preview=ctx.config.processing.generate_texture_preview,
             dem_file_path=dem_file_path,
             season_month=season_month,
@@ -259,13 +261,14 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
     snow_thermoprops = None
 
     material_gen = TerrainMaterialGenerator()
+    hash_suffix = f"_{ctx.cache_hash}" if ctx.cache_hash else ""
     background_resolution_m = ctx.config.background_resolution_m
 
     selection_texture_path, preview_texture_path = (
         material_gen.generate_textures_from_file(
             landcover_file_path=background_landcover_file_path,
             output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_background_{background_resolution_m}m",
+            base_name=f"{ctx.scene_name}_background_{background_resolution_m}m{hash_suffix}",
             create_preview=ctx.config.processing.generate_texture_preview,
             dem_file_path=dem_file_path,
             season_month=season_month,

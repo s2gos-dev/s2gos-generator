@@ -5,9 +5,7 @@ from upath import UPath
 MAX_PIXEL_VALUE = 255
 
 
-def generate_buffer_mask(
-    mask_size: int, target_size: int, output_path: UPath
-) -> UPath:
+def generate_buffer_mask(mask_size: int, target_size: int, output_path: UPath) -> UPath:
     """
     Generates a square buffer mask texture with center hole for target area.
 

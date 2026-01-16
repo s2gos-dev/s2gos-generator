@@ -70,30 +70,17 @@ class RectangleGeometry(RegionGeometry):
     """Rectangular region defined by center point and dimensions.
 
     Coordinates can be specified in either:
-    - Scene coordinates (meters from scene center): Use center_x, center_y
-    - Geographic coordinates (WGS84): Use center_lat, center_lon
-
-    The system will auto-detect based on which fields are provided.
+    - Geographic coordinates (WGS84): center=(lon, lat) with coord_type="geographic"
+    - Scene coordinates (meters from scene center): center=(x, y) with coord_type="scene"
     """
 
     geometry_type: Literal["rectangle"] = "rectangle"
 
-    # Scene coordinates (meters from scene center)
-    center_x: Optional[float] = Field(
-        None,
-        description="X coordinate of rectangle center in scene coordinates (meters)",
+    center: Tuple[float, float] = Field(
+        ..., description="Center: (lon, lat) if geographic, (x, y) if scene"
     )
-    center_y: Optional[float] = Field(
-        None,
-        description="Y coordinate of rectangle center in scene coordinates (meters)",
-    )
-
-    # Geographic coordinates (WGS84)
-    center_lat: Optional[float] = Field(
-        None, description="Latitude of rectangle center in decimal degrees"
-    )
-    center_lon: Optional[float] = Field(
-        None, description="Longitude of rectangle center in decimal degrees"
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
     )
 
     # Dimensions (always in meters)
@@ -101,22 +88,14 @@ class RectangleGeometry(RegionGeometry):
     height_m: float = Field(..., description="Rectangle height in meters", gt=0)
 
     @model_validator(mode="after")
-    def validate_coordinates(self):
-        """Ensure exactly one coordinate system is specified."""
-        has_scene_coords = self.center_x is not None and self.center_y is not None
-        has_geo_coords = self.center_lat is not None and self.center_lon is not None
-
-        if not has_scene_coords and not has_geo_coords:
-            raise ValueError(
-                "Rectangle requires either scene coordinates (center_x, center_y) "
-                "or geographic coordinates (center_lat, center_lon)"
-            )
-
-        if has_scene_coords and has_geo_coords:
-            raise ValueError(
-                "Rectangle cannot specify both scene and geographic coordinates. "
-                "Use either (center_x, center_y) or (center_lat, center_lon)"
-            )
+    def validate_coordinate_format(self):
+        """Ensure coordinate format matches coord_type."""
+        if self.coord_type == "geographic":
+            lon, lat = self.center
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"Longitude {lon} out of valid range [-180, 180]")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"Latitude {lat} out of valid range [-90, 90]")
 
         return self
 
@@ -124,16 +103,15 @@ class RectangleGeometry(RegionGeometry):
         self, coordinate_system: Optional[CoordinateSystem] = None
     ) -> Tuple[float, float]:
         """Get rectangle center in scene coordinates (meters)."""
-        if self.center_x is not None and self.center_y is not None:
-            return (self.center_x, self.center_y)
-        elif self.center_lat is not None and self.center_lon is not None:
+        if self.coord_type == "scene":
+            return self.center
+        else:
             if coordinate_system is None:
                 raise ValueError(
                     "CoordinateSystem required to convert geographic coordinates"
                 )
-            return coordinate_system.latlon_to_scene(self.center_lat, self.center_lon)
-        else:
-            raise ValueError("Invalid coordinate specification")
+            lon, lat = self.center
+            return coordinate_system.latlon_to_scene(lat, lon)
 
     def get_bounds(
         self, coordinate_system: Optional[CoordinateSystem] = None
@@ -194,47 +172,40 @@ class PolygonGeometry(RegionGeometry):
     """Polygonal region defined by vertices.
 
     Vertices can be specified in either:
-    - Scene coordinates (meters): vertices_xy = [(x1, y1), (x2, y2), ...]
-    - Geographic coordinates (WGS84): vertices_latlon = [(lat1, lon1), (lat2, lon2), ...]
+    - Geographic coordinates (WGS84): vertices=[(lon, lat), ...] with coord_type="geographic"
+    - Scene coordinates (meters): vertices=[(x, y), ...] with coord_type="scene"
 
     The polygon is automatically closed (first and last points connected).
     """
 
     geometry_type: Literal["polygon"] = "polygon"
 
-    # Scene coordinates (meters from scene center)
-    vertices_xy: Optional[list[Tuple[float, float]]] = Field(
-        None,
-        description="Polygon vertices as (x, y) tuples in scene coordinates (meters)",
+    vertices: list[Tuple[float, float]] = Field(
+        ...,
+        description="Vertices: [(lon, lat), ...] if geographic, [(x, y), ...] if scene",
     )
-
-    # Geographic coordinates (WGS84)
-    vertices_latlon: Optional[list[Tuple[float, float]]] = Field(
-        None,
-        description="Polygon vertices as (lat, lon) tuples in decimal degrees",
+    coord_type: Literal["geographic", "scene"] = Field(
+        ..., description="Coordinate system type"
     )
 
     @model_validator(mode="after")
     def validate_vertices(self):
-        """Ensure exactly one vertex specification is provided."""
-        has_scene = self.vertices_xy is not None
-        has_geo = self.vertices_latlon is not None
-
-        if not has_scene and not has_geo:
-            raise ValueError("Polygon requires either vertices_xy or vertices_latlon")
-
-        if has_scene and has_geo:
+        """Ensure vertices meet requirements."""
+        if len(self.vertices) < 3:
             raise ValueError(
-                "Polygon cannot specify both scene and geographic vertices. "
-                "Use either vertices_xy or vertices_latlon"
+                f"Polygon requires at least 3 vertices, got {len(self.vertices)}"
             )
 
-        # Check minimum vertices
-        vertices = self.vertices_xy if has_scene else self.vertices_latlon
-        if len(vertices) < 3:
-            raise ValueError(
-                f"Polygon requires at least 3 vertices, got {len(vertices)}"
-            )
+        if self.coord_type == "geographic":
+            for i, (lon, lat) in enumerate(self.vertices):
+                if not (-180 <= lon <= 180):
+                    raise ValueError(
+                        f"Vertex {i}: Longitude {lon} out of range [-180, 180]"
+                    )
+                if not (-90 <= lat <= 90):
+                    raise ValueError(
+                        f"Vertex {i}: Latitude {lat} out of range [-90, 90]"
+                    )
 
         return self
 
@@ -242,20 +213,18 @@ class PolygonGeometry(RegionGeometry):
         self, coordinate_system: Optional[CoordinateSystem] = None
     ) -> list[Tuple[float, float]]:
         """Get polygon vertices in scene coordinates (meters)."""
-        if self.vertices_xy is not None:
-            return self.vertices_xy
-        elif self.vertices_latlon is not None:
+        if self.coord_type == "scene":
+            return self.vertices
+        else:
             if coordinate_system is None:
                 raise ValueError(
                     "CoordinateSystem required to convert geographic coordinates"
                 )
             scene_vertices = []
-            for lat, lon in self.vertices_latlon:
+            for lon, lat in self.vertices:
                 x, y = coordinate_system.latlon_to_scene(lat, lon)
                 scene_vertices.append((x, y))
             return scene_vertices
-        else:
-            raise ValueError("Invalid vertex specification")
 
     def get_bounds(
         self, coordinate_system: Optional[CoordinateSystem] = None

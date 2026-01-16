@@ -1,8 +1,10 @@
 """Scene-specific resource context for pipeline execution."""
 
-from pathlib import Path
+import logging
+import random
 from typing import Dict, List, Optional
 
+import numpy as np
 from upath import UPath
 
 from .assets import SceneAssets
@@ -55,6 +57,7 @@ class SceneResourceContext:
         self.assets = SceneAssets()
         self.additional_material_libraries = additional_material_libraries or []
         self.processed_objects: List = []
+        self.vegetation_exclusion_zones: List = []
         self.scene_description: Optional[object] = None
         self.hamster_data_paths: Optional[Dict[str, UPath]] = None
 
@@ -64,6 +67,14 @@ class SceneResourceContext:
         self._background_aoi_polygon: Optional[object] = None
 
         self._coord_system: Optional[object] = None
+
+        # Seed random generators for reproducibility
+        if config.random_seed is not None:
+            random.seed(config.random_seed)
+            np.random.seed(config.random_seed)
+            logging.info(
+                f"Random seed set to {config.random_seed} for reproducible generation"
+            )
 
     @property
     def user_assets(self):

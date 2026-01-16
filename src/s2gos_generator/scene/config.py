@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -347,6 +346,7 @@ def create_s2gos_scene(
 
     metadata = {
         "generation_date": datetime.now().isoformat(),
+        "random_seed": kwargs.get("random_seed"),
         "dem_name": kwargs.get("dem_name"),
         "landcover_name": kwargs.get("landcover_name"),
         "landcover_ids": landcover_ids,

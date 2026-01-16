@@ -39,7 +39,6 @@ SIGMA = 0.15  # Logistic function width (°C)
 HARD_FREEZE_LIMIT = 0.3  # Temperature above which snow is impossible (°C)
 
 
-
 def get_day_of_year(month: Month) -> int:
     """Map Month enum to approximate day of year."""
     if month == Month.DECEMBER:
@@ -49,14 +48,12 @@ def get_day_of_year(month: Month) -> int:
     else:
         return 1
 
-def apply_spatial_smoothing(
-    data: np.ndarray,
-    sigma: float = 10.0
-) -> np.ndarray:
+
+def apply_spatial_smoothing(data: np.ndarray, sigma: float = 10.0) -> np.ndarray:
     """Apply Gaussian spatial smoothing."""
     if sigma <= 0:
         return data
-    return gaussian_filter(data, sigma=sigma, mode='nearest')
+    return gaussian_filter(data, sigma=sigma, mode="nearest")
 
 
 def calculate_seasonal_amplitude(abs_lat: np.ndarray) -> np.ndarray:
@@ -84,19 +81,26 @@ def interpolate_cams_temperature(
     Returns:
         Temperature in Celsius, same shape as elevations
     """
-    if 't' not in thermoprops.data_vars:
-        raise ValueError(f"CAMS thermoprops missing 't' (temperature). Found: {set(thermoprops.data_vars)}")
-    if 'z' not in thermoprops.coords and 'z' not in thermoprops.data_vars:
-        raise ValueError(f"CAMS thermoprops missing 'z' (height). Found coords: {set(thermoprops.coords)}, data_vars: {set(thermoprops.data_vars)}")
-    if thermoprops['t'].ndim != 1 or thermoprops['z'].ndim != 1:
-        raise ValueError(f"CAMS variables must be 1D after squeeze(drop=True). Got t.shape={thermoprops['t'].shape}, z.shape={thermoprops['z'].shape}")
+    if "t" not in thermoprops.data_vars:
+        raise ValueError(
+            f"CAMS thermoprops missing 't' (temperature). Found: {set(thermoprops.data_vars)}"
+        )
+    if "z" not in thermoprops.coords and "z" not in thermoprops.data_vars:
+        raise ValueError(
+            f"CAMS thermoprops missing 'z' (height). Found coords: {set(thermoprops.coords)}, data_vars: {set(thermoprops.data_vars)}"
+        )
+    if thermoprops["t"].ndim != 1 or thermoprops["z"].ndim != 1:
+        raise ValueError(
+            f"CAMS variables must be 1D after squeeze(drop=True). Got t.shape={thermoprops['t'].shape}, z.shape={thermoprops['z'].shape}"
+        )
 
-    z_m = thermoprops['z'].values * 1000.0
-    t_c = thermoprops['t'].values - 273.15
-    
+    z_m = thermoprops["z"].values * 1000.0
+    t_c = thermoprops["t"].values - 273.15
+
     interpolator = interp1d(
-        z_m, t_c,
-        kind='linear',
+        z_m,
+        t_c,
+        kind="linear",
         bounds_error=False,
         fill_value=(t_c[0], t_c[-1]),
     )
@@ -161,4 +165,3 @@ def calculate_snow_probability_map(
         probabilities = apply_spatial_smoothing(probabilities, sigma=smooth_sigma)
 
     return probabilities, temperatures
-

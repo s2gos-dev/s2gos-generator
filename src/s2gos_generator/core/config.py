@@ -1205,11 +1205,6 @@ class SceneGenConfig(BaseModel):
     def validate_snow_config(self):
         """Validate snow configuration consistency."""
         if self.snow_thermoprops is not None:
-            if not self.apply_seasonal_snow:
-                raise ValueError(
-                    "snow_thermoprops specified but apply_seasonal_snow is False. "
-                    "Set apply_seasonal_snow=True to use CAMS temperature data."
-                )
             if self.snow_season_month is None:
                 raise ValueError(
                     "snow_thermoprops requires snow_season_month to be set "

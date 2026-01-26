@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import xarray as xr
 from PIL import Image
+from s2gos_utils.io.paths import open_dataset
 from upath import UPath
 
 PERMANENT_WATER_MATERIAL_INDEX = 7
@@ -342,10 +343,7 @@ class TerrainMaterialGenerator:
         thermoprops_dataset = None
         if snow_thermoprops is not None:
             try:
-                thermoprops_dataset = xr.open_dataset(snow_thermoprops).squeeze(
-                    drop=True
-                )
-
+                thermoprops_dataset = open_dataset(snow_thermoprops).squeeze(drop=True)
                 if "t" not in thermoprops_dataset.data_vars:
                     raise ValueError("Missing required variable 't' (temperature)")
                 if (

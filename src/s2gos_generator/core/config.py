@@ -397,7 +397,7 @@ class AtmosphereConfig(BaseModel):
         0.0, ge=0.0, description="Bottom of atmosphere altitude in meters"
     )
     toa: float = Field(
-        40000.0, gt=0.0, description="Top of atmosphere altitude in meters"
+        75000.0, gt=0.0, description="Top of atmosphere altitude in meters"
     )
 
     details: Annotated[AtmosphereTypeConfig, Field(..., discriminator="type")]
@@ -1521,7 +1521,7 @@ def create_custom_particle_layer(
 def create_heterogeneous_atmosphere_config(
     molecular_config: Optional[MolecularAtmosphereConfig] = None,
     particle_layers: Optional[list[ParticleLayerConfig]] = None,
-    toa: float = 40000.0,
+    toa: float = 75000.0,
 ) -> AtmosphereConfig:
     """Create heterogeneous atmosphere configuration.
 

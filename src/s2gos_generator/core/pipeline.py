@@ -262,24 +262,75 @@ class SceneGenerationPipeline:
             dot.attr("node", fontname="Arial", fontsize="12", style="filled")
             dot.attr("edge", fontname="Arial", fontsize="10")
 
+            # resource_colors = {
+                # "aoi": "#90EE90",
+                # "buffer_aoi": "#98FB98",
+                # "background_aoi": "#F0FFF0",
+                # "target_dem": "#87CEEB",
+                # "buffer_dem": "#B0E0E6",
+                # "target_landcover": "#DDA0DD",
+            #     "buffer_landcover": "#E6E6FA",
+            #     "background_landcover": "#F8F8FF",
+            #     "target_mesh": "#FFB6C1",
+            #     "buffer_mesh": "#FFC0CB",
+            #     "target_texture": "#FFFFE0",
+            #     "buffer_texture": "#FFFACD",
+            #     "background_texture": "#FFFFF0",
+            #     "user_assets": "#FFA07A",
+            #     "hamster_data": "#20B2AA",
+            #     "scene_description": "#FF6347",
+            # }
+
             resource_colors = {
-                "aoi": "#90EE90",
-                "buffer_aoi": "#98FB98",
-                "background_aoi": "#F0FFF0",
-                "target_dem": "#87CEEB",
-                "buffer_dem": "#B0E0E6",
-                "target_landcover": "#DDA0DD",
-                "buffer_landcover": "#E6E6FA",
-                "background_landcover": "#F8F8FF",
-                "target_mesh": "#FFB6C1",
-                "buffer_mesh": "#FFC0CB",
-                "target_texture": "#FFFFE0",
-                "buffer_texture": "#FFFACD",
-                "background_texture": "#FFFFF0",
+                "DEM_raster": "#87CEEB",
+                "terrain_mesh": "#87CEEB",
+                "landcover_raster": "#DDA0DD",
+                "terrain_texture": "#DDA0DD",
                 "user_assets": "#FFA07A",
-                "hamster_data": "#20B2AA",
+                "bare_soil_texture": "#FFA07A",
+                "water_mask": "#B0E0E6",
+                "water_material": "#B0E0E6",
+                "atmosphere": "#20B2AA",
+                "vegetation_mask": "#98FB98",
+                "vegetation_placement": "#98FB98",
+                "canopy_height": "#98FB98",
+                "road_footprint":"#D3D3D3",
+                "road_mesh":"#D3D3D3",
+                "building_footprint":"#D3D3D3",
+                "building_mesh":"#D3D3D3",
+                "builtup_mask":"#D3D3D3",
+                "snow_cover_mask":"#F0FFF0",
+                "thermophysical_profile": "#20B2AA",
+                "clouds": "#20B2AA",
+                "aerosol": "#20B2AA",
                 "scene_description": "#FF6347",
             }
+
+            # time dependent
+            # resource_colors = {
+            #     # "DEM_raster": "#87CEEB",
+            #     # "terrain_mesh": "#87CEEB",
+            #     "landcover_raster": "#FFA07A",
+            #     "terrain_texture": "#FFA07A",
+            #     "user_assets": "#FFA07A",
+            #     "bare_soil_texture": "#FFA07A",
+            #     "water_mask": "#FFA07A",
+            #     "water_material": "#FFA07A",
+            #     "atmosphere": "#FFA07A",
+            #     "vegetation_mask": "#FFA07A",
+            #     "vegetation_placement": "#FFA07A",
+            #     "canopy_height": "#FFA07A",
+            #     # "road_footprint":"#D3D3D3",
+            #     # "road_mesh":"#D3D3D3",
+            #     # "building_footprint":"#D3D3D3",
+            #     # "building_mesh":"#D3D3D3",
+            #     # "builtup_mask":"#D3D3D3",
+            #     "snow_cover_mask":"#FFA07A",
+            #     "thermophysical_profile": "#FFA07A",
+            #     "clouds": "#FFA07A",
+            #     "aerosol": "#FFA07A",
+            #     "scene_description": "#FF6347",
+            # }
 
             for resource in resources:
                 color = resource_colors.get(resource.id, "#D3D3D3")
@@ -303,7 +354,8 @@ class SceneGenerationPipeline:
             legend_text = (
                 f"Scene Generation Pipeline: {self.scene_name}\\n"
                 f"Generated: {self.config.created_at.strftime('%Y-%m-%d %H:%M')}\\n"
-                f"Shapes: ○ AOI, ◊ Mesh, □ Array, ⬢ Final"
+                # f"Shapes: ○ AOI, ◊ Mesh, □ Array, ⬢ Final"
+                f"Shapes: ◊ Mesh, □ Array, ⬢ Final"
             )
             dot.attr(label=legend_text)
             dot.attr(labelloc="t")

@@ -9,6 +9,11 @@ from s2gos_utils.coordinates import CoordinateSystem
 from ..core.context import SceneResourceContext
 
 
+def _create_aoi_polygon(ctx: SceneResourceContext, size_km: float):
+    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
+    return coords.create_scene_polygon(size_km)
+
+
 def generate_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """Generate the Area of Interest polygon.
 
@@ -22,9 +27,7 @@ def generate_aoi(ctx: SceneResourceContext) -> Optional[Path]:
         None (AOI polygon is stored in context for other resources to access)
     """
 
-    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
-    aoi_polygon = coords.create_scene_polygon(ctx.aoi_size_km)
-
+    aoi_polygon = _create_aoi_polygon(ctx, ctx.aoi_size_km)
     ctx._target_aoi_polygon = aoi_polygon
 
     corners = list(aoi_polygon.exterior.coords[:-1])
@@ -50,11 +53,7 @@ def generate_buffer_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     buffer_size_km = ctx.config.buffer_size_km
-
-    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
-    buffer_aoi_polygon = coords.create_scene_polygon(buffer_size_km)
-
-    ctx._buffer_aoi_polygon = buffer_aoi_polygon
+    ctx._buffer_aoi_polygon = _create_aoi_polygon(ctx, buffer_size_km)
 
     return None
 
@@ -70,10 +69,6 @@ def generate_background_aoi(ctx: SceneResourceContext) -> Optional[Path]:
     """
 
     background_size_km = ctx.config.background_size_km
-
-    coords = CoordinateSystem(ctx.center_lat, ctx.center_lon)
-    background_aoi_polygon = coords.create_scene_polygon(background_size_km)
-
-    ctx._background_aoi_polygon = background_aoi_polygon
+    ctx._background_aoi_polygon = _create_aoi_polygon(ctx, background_size_km)
 
     return None

@@ -102,6 +102,40 @@ def _apply_region_materials_to_texture(
         logging.info(f"Updated {area_name} with material regions: {texture_path}")
 
 
+def _generate_texture(
+    ctx: SceneResourceContext,
+    landcover_path: Path,
+    base_name: str,
+    dem_file_path: Optional[Path],
+    season_month: Optional[int],
+    snow_material_index: Optional[int],
+    snow_thermoprops: Optional[Path],
+    area_name: str,  # "target" | "buffer" | "background" — used for region filtering and log
+) -> tuple[Path, Optional[Path]]:
+    material_gen = TerrainMaterialGenerator()
+    selection_texture_path, preview_texture_path = material_gen.generate_textures_from_file(
+        landcover_file_path=landcover_path,
+        output_dir=ctx.textures_dir,
+        base_name=base_name,
+        create_preview=ctx.config.processing.generate_texture_preview,
+        dem_file_path=dem_file_path,
+        season_month=season_month,
+        snow_material_index=snow_material_index,
+        coordinate_system=ctx.coordinate_system,
+        snow_thermoprops=snow_thermoprops,
+    )
+    if ctx.config.material_regions:
+        applicable_regions = [
+            r for r in ctx.config.material_regions if area_name in r.applies_to
+        ]
+        if applicable_regions:
+            _apply_region_materials_to_texture(
+                selection_texture_path, landcover_path, applicable_regions, ctx,
+                f"{area_name} texture",
+            )
+    return selection_texture_path, preview_texture_path
+
+
 def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
     """Generate texture maps from target area land cover data.
 
@@ -131,40 +165,21 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
         if dem_file_path is None:
             logging.warning("Seasonal snow requested but DEM not available")
 
-    material_gen = TerrainMaterialGenerator()
-
     resolution_str = f"{ctx.target_resolution_m}m"
-
-    selection_texture_path, preview_texture_path = (
-        material_gen.generate_textures_from_file(
-            landcover_file_path=landcover_file_path,
-            output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_{resolution_str}",
-            create_preview=ctx.config.processing.generate_texture_preview,
-            dem_file_path=dem_file_path,
-            season_month=season_month,
-            snow_material_index=snow_material_index,
-            coordinate_system=ctx.coordinate_system,
-            snow_thermoprops=snow_thermoprops,
-        )
+    selection_texture_path, preview_texture_path = _generate_texture(
+        ctx,
+        landcover_file_path,
+        f"{ctx.scene_name}_{resolution_str}",
+        dem_file_path,
+        season_month,
+        snow_material_index,
+        snow_thermoprops,
+        "target",
     )
 
     ctx.assets.selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.preview_texture_file = preview_texture_path
-
-    if ctx.config.material_regions:
-        applicable_regions = [
-            r for r in ctx.config.material_regions if "target" in r.applies_to
-        ]
-        if applicable_regions:
-            _apply_region_materials_to_texture(
-                selection_texture_path,
-                landcover_file_path,
-                applicable_regions,
-                ctx,
-                "target texture",
-            )
 
     logging.info(f"Target texture: {selection_texture_path}")
     return selection_texture_path
@@ -199,41 +214,22 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
         if dem_file_path is None:
             logging.warning("Seasonal snow requested for buffer but DEM not available")
 
-    material_gen = TerrainMaterialGenerator()
-
     buffer_resolution_m = ctx.config.buffer_resolution_m
     resolution_str = f"{buffer_resolution_m}m"
-
-    selection_texture_path, preview_texture_path = (
-        material_gen.generate_textures_from_file(
-            landcover_file_path=buffer_landcover_file_path,
-            output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_buffer_{resolution_str}",
-            create_preview=ctx.config.processing.generate_texture_preview,
-            dem_file_path=dem_file_path,
-            season_month=season_month,
-            snow_material_index=snow_material_index,
-            coordinate_system=ctx.coordinate_system,
-            snow_thermoprops=snow_thermoprops,
-        )
+    selection_texture_path, preview_texture_path = _generate_texture(
+        ctx,
+        buffer_landcover_file_path,
+        f"{ctx.scene_name}_buffer_{resolution_str}",
+        dem_file_path,
+        season_month,
+        snow_material_index,
+        snow_thermoprops,
+        "buffer",
     )
 
     ctx.assets.buffer_selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.buffer_preview_texture_file = preview_texture_path
-
-    if ctx.config.material_regions:
-        applicable_regions = [
-            r for r in ctx.config.material_regions if "buffer" in r.applies_to
-        ]
-        if applicable_regions:
-            _apply_region_materials_to_texture(
-                selection_texture_path,
-                buffer_landcover_file_path,
-                applicable_regions,
-                ctx,
-                "buffer texture",
-            )
 
     return selection_texture_path
 
@@ -258,39 +254,20 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
     snow_material_index = None
     snow_thermoprops = None
 
-    material_gen = TerrainMaterialGenerator()
     background_resolution_m = ctx.config.background_resolution_m
-
-    selection_texture_path, preview_texture_path = (
-        material_gen.generate_textures_from_file(
-            landcover_file_path=background_landcover_file_path,
-            output_dir=ctx.textures_dir,
-            base_name=f"{ctx.scene_name}_background_{background_resolution_m}m",
-            create_preview=ctx.config.processing.generate_texture_preview,
-            dem_file_path=dem_file_path,
-            season_month=season_month,
-            snow_material_index=snow_material_index,
-            coordinate_system=ctx.coordinate_system,
-            snow_thermoprops=snow_thermoprops,
-        )
+    selection_texture_path, preview_texture_path = _generate_texture(
+        ctx,
+        background_landcover_file_path,
+        f"{ctx.scene_name}_background_{background_resolution_m}m",
+        dem_file_path,
+        season_month,
+        snow_material_index,
+        snow_thermoprops,
+        "background",
     )
 
     ctx.assets.background_selection_texture_file = selection_texture_path
     if preview_texture_path:
         ctx.assets.background_preview_texture_file = preview_texture_path
-
-    # Apply material region overlays if configured
-    if ctx.config.material_regions:
-        applicable_regions = [
-            r for r in ctx.config.material_regions if "background" in r.applies_to
-        ]
-        if applicable_regions:
-            _apply_region_materials_to_texture(
-                selection_texture_path,
-                background_landcover_file_path,
-                applicable_regions,
-                ctx,
-                "background texture",
-            )
 
     return selection_texture_path

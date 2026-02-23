@@ -232,14 +232,6 @@ class SceneGenerationPipeline:
                 f"  Optional ({len(optional_resources)}): {', '.join(optional_resources)}"
             )
 
-    def run_full_pipeline(self) -> SceneDescription:
-        """Execute the complete scene generation pipeline.
-
-        Returns:
-            SceneDescription instance with complete scene configuration
-        """
-        return self.run()
-
     def run(self) -> SceneDescription:
         """Execute the complete scene generation pipeline.
 
@@ -377,25 +369,3 @@ class SceneGenerationPipeline:
         except Exception as e:
             logging.warning(f"Could not create pipeline visualization: {e}")
             return None
-
-    def print_resource_summary(self) -> None:
-        """Print a summary of the resource dependency graph."""
-        self.initialize()
-        resources = self.registry.get_resource_list()
-
-        resource_groups = {"Core": [], "Buffer": [], "Background": [], "Optional": []}
-
-        for resource in resources:
-            category = self.registry._categorize_resource(resource.id)
-            if category == "core":
-                resource_groups["Core"].append(resource.id)
-            elif category == "buffer":
-                resource_groups["Buffer"].append(resource.id)
-            elif category == "background":
-                resource_groups["Background"].append(resource.id)
-            else:
-                resource_groups["Optional"].append(resource.id)
-
-        for group_name, resource_ids in resource_groups.items():
-            if resource_ids:
-                logging.info(f"{group_name}: {', '.join(resource_ids)}")

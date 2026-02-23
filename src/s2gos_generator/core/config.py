@@ -5,9 +5,15 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 from s2gos_utils import validate_config_version
-from s2gos_utils.io.paths import PathRef, exists, open_file
+from s2gos_utils.io.paths import PathRef, open_file
 from s2gos_utils.io.resolver import resolver
 from s2gos_utils.setting.paths import to_pathref
 from upath import UPath
@@ -1180,8 +1186,11 @@ class SceneGenConfig(BaseModel):
         "validate_assignment": True,
         # "extra": "forbid",
         "arbitrary_types_allowed": True,
-        "json_encoders": {datetime: lambda v: v.isoformat()},
     }
+
+    @field_serializer("created_at", when_used="json")
+    def serialize_datetime_iso(self, created_at: datetime):
+        return created_at.isoformat()
 
     @field_validator("output_dir")
     @classmethod
@@ -1240,16 +1249,6 @@ class SceneGenConfig(BaseModel):
         if "output_dir" in data and isinstance(data["output_dir"], str):
             data["output_dir"] = UPath(data["output_dir"])
 
-        # TODO: Not sure this is needed anymore
-        # if (
-        #     "hamster" in data
-        #     and data["hamster"]
-        #     and "data_path" in data["hamster"]
-        #     and isinstance(data["hamster"]["data_path"], str)
-        # ):
-        #     data["hamster"]["data_path"] = UPath(data["hamster"]["data_path"])
-
-        # Simple version validation only
         validate_config_version(
             "scene_config", data, get_version(), "scene generation configuration"
         )
@@ -1315,20 +1314,6 @@ class SceneGenConfig(BaseModel):
             details=heterogeneous_config,
         )
 
-    def validate_configuration(self) -> list[str]:
-        """Validate the complete configuration and return any errors."""
-        errors = []
-
-        if self.enable_buffer:
-            if self.buffer_size_km <= self.location.aoi_size_km:
-                errors.append("Buffer size must be larger than AOI size")
-
-        for xml_scene_config in self.xml_scenes:
-            if not exists(xml_scene_config.xml_path):
-                errors.append(f"XML file not found: {xml_scene_config.xml_path}")
-
-        return errors
-
     @property
     def scene_output_dir(self) -> PathRef:
         """Get the specific output directory for this scene."""
@@ -1348,16 +1333,6 @@ class SceneGenConfig(BaseModel):
     def data_dir(self) -> PathRef:
         """Get the data output directory."""
         return self.scene_output_dir / "data"
-
-    @property
-    def has_buffer(self) -> bool:
-        """Check if buffer area is enabled."""
-        return self.enable_buffer
-
-    @property
-    def has_background(self) -> bool:
-        """Check if background area is enabled."""
-        return self.enable_background
 
 
 def create_scene_config(

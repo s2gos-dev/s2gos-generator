@@ -84,41 +84,6 @@ class ResourceRegistry:
 
         return result
 
-    def filter_by_config(self, config):
-        """Remove disabled resources from registry based on configuration."""
-        resources_to_remove = []
-
-        if not getattr(config, "enable_buffer", False):
-            resources_to_remove.extend(
-                [
-                    "buffer_aoi",
-                    "buffer_dem",
-                    "buffer_landcover",
-                    "buffer_mesh",
-                    "buffer_texture",
-                ]
-            )
-
-        if not getattr(config, "enable_background", False):
-            resources_to_remove.extend(
-                ["background_aoi", "background_landcover", "background_texture"]
-            )
-
-        # User assets
-        if not getattr(config, "user_assets", None):
-            resources_to_remove.append("user_assets")
-
-        # HAMSTER data
-        if not getattr(config, "hamster", None) or not getattr(
-            config.hamster, "enabled", False
-        ):
-            resources_to_remove.append("hamster_data")
-
-        # Remove disabled resources
-        for resource_id in resources_to_remove:
-            if resource_id in self.resources:
-                del self.resources[resource_id]
-
     def _categorize_resource(self, resource_id: str) -> str:
         """Categorize a resource by its ID."""
         if resource_id in {"aoi", "scene_description"} or resource_id.startswith(

@@ -84,12 +84,12 @@ class SceneResourceContext:
     @property
     def has_buffer(self) -> bool:
         """Check if buffer processing is enabled."""
-        return self.config.has_buffer
+        return self.config.enable_buffer
 
     @property
     def has_background(self) -> bool:
         """Check if background processing is enabled."""
-        return self.config.has_background
+        return self.config.enable_background
 
     @property
     def has_hamster(self) -> bool:

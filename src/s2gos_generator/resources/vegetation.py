@@ -244,6 +244,8 @@ def _process_vegetation_with_shared_datasets(
 
         if vegetation_config.min_spacing > 0 and len(all_vegetation_instances) > 1:
             logging.info("Applying optimized spacing filter across all species...")
+            # Shuffle so no species has systematic priority in spacing conflicts.
+            random.shuffle(all_vegetation_instances)
             all_vegetation_instances = _apply_spacing_filter_optimized(
                 all_vegetation_instances, vegetation_config.min_spacing
             )
@@ -420,36 +422,36 @@ def _process_spillover_vegetation(
             f"Processing spillover for species '{species.name}' into landcover class {target_class}: {len(y_indices)} candidate pixels"
         )
 
-        # For each candidate pixel, calculate spillover probability and generate instances
-        for y_idx, x_idx in zip(y_indices, x_indices):
-            distance_pixels = distance_from_primary[y_idx, x_idx]
-            distance_decay = 1.0 - (distance_pixels / max_distance_pixels)
+        # Vectorised batch over all candidate pixels
+        distances = distance_from_primary[y_indices, x_indices]
+        distance_decay = 1.0 - (distances / max_distance_pixels)
+        lam = (
+            species.density_per_hectare * compat_score * distance_decay * pixel_area_ha
+        )
+        n_instances_arr = np.random.poisson(lam)
+        n_instances_arr = np.minimum(
+            n_instances_arr, vegetation_config.max_instances_per_pixel
+        )
 
-            effective_density = (
-                species.density_per_hectare * compat_score * distance_decay
+        active = n_instances_arr > 0
+        if not np.any(active):
+            continue
+
+        center_y_arr = landcover_data.y.values[y_indices[active]]
+        center_x_arr = landcover_data.x.values[x_indices[active]]
+
+        for cy, cx, n in zip(center_y_arr, center_x_arr, n_instances_arr[active]):
+            spillover_instances.extend(
+                _generate_pixel_vegetation_positions(
+                    cx,
+                    cy,
+                    x_resolution,
+                    y_resolution,
+                    int(n),
+                    species,
+                    vegetation_config,
+                )
             )
-
-            n_instances = np.random.poisson(effective_density * pixel_area_ha)
-
-            if n_instances == 0:
-                continue
-
-            n_instances = min(n_instances, vegetation_config.max_instances_per_pixel)
-
-            center_y = float(landcover_data.y.values[y_idx])
-            center_x = float(landcover_data.x.values[x_idx])
-
-            pixel_instances = _generate_pixel_vegetation_positions(
-                center_x,
-                center_y,
-                x_resolution,
-                y_resolution,
-                n_instances,
-                species,
-                vegetation_config,
-            )
-
-            spillover_instances.extend(pixel_instances)
 
     logging.info(
         f"Generated {len(spillover_instances)} spillover instances for species '{species.name}'"
@@ -527,6 +529,13 @@ def _generate_pixel_vegetation_positions(
                     "scale_max": species.scale_max,
                 }
             )
+
+    if len(positions) < n_instances:
+        logging.warning(
+            f"Rejection sampling exhausted {max_attempts} attempts for species "
+            f"'{species.name}': placed {len(positions)}/{n_instances}. "
+            f"Consider reducing density_per_hectare or min_spacing."
+        )
 
     return positions
 
@@ -691,7 +700,10 @@ def load_vegetation_collection_binary(binary_path) -> np.ndarray:
 
 
 def _calculate_max_instances_per_pixel(
-    x_resolution: float, y_resolution: float, min_spacing: float
+    x_resolution: float,
+    y_resolution: float,
+    min_spacing: float,
+    max_fallback: float = 100,
 ) -> int:
     """Calculate maximum instances that can fit in a pixel given minimum spacing.
 
@@ -704,7 +716,7 @@ def _calculate_max_instances_per_pixel(
         Maximum number of instances that can fit in pixel
     """
     if min_spacing <= 0:
-        return 50
+        return max_fallback
 
     instances_x = max(1, int(x_resolution / min_spacing))
     instances_y = max(1, int(y_resolution / min_spacing))
@@ -785,16 +797,7 @@ def _batch_elevation_lookup(
 def _apply_spacing_filter_optimized(
     positions: List[Dict[str, float]], min_spacing: float
 ) -> List[Dict[str, float]]:
-    """Optimized spacing filter using spatial grid for O(n) average performance.
-
-    Uses spatial hashing to achieve O(n) average-case performance for spacing enforcement.
-    The grid cell size is set to min_spacing, so each position only needs to check
-    its immediate 9 neighboring cells (3x3 grid) for conflicts.
-
-    Performance characteristics:
-    - Time complexity: O(n) average case, O(n²) worst case (all positions in same cell)
-    - Space complexity: O(n) for grid storage
-    - Practical performance: ~10-100x faster than naive O(n²) for large datasets
+    """Optimized spacing filter using spatial grid.
 
     Args:
         positions: List of vegetation positions with 'x' and 'y' coordinates

@@ -81,12 +81,12 @@ class MeshGenerator:
         """
 
         bounds = mesh.bounds
-        extent = mesh.extents
+        extent = mesh.extents.copy()
 
-        if extent[0] == 0:
-            extent[0] = 1.0
-        if extent[1] == 0:
-            extent[1] = 1.0
+        if extent[0] == 0 or extent[1] == 0:
+            raise ValueError(
+                "Cannot calculate UV coordinates: Mesh extent on X or Y axis is zero. Check your input DEM data."
+            )
 
         uv_coords = (mesh.vertices[:, :2] - bounds[0, :2]) / extent[:2]
 

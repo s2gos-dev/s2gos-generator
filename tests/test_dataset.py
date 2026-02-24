@@ -1,6 +1,4 @@
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import geopandas as gpd
 import numpy as np
@@ -47,11 +45,13 @@ def mock_index_gdf():
     gdf = gpd.GeoDataFrame({"path": paths, "geometry": geometries}, crs="EPSG:4326")
     return gdf
 
+
 @pytest.fixture
 def zarr_path(tmp_path):
     tmp_zarr = tmp_path / "data.zarr"
     tmp_zarr.mkdir()
     return tmp_zarr
+
 
 @pytest.fixture
 def mock_xarray_dataset():

@@ -3,16 +3,7 @@
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import BaseModel
-
-
-class ResourceContext(BaseModel):
-    """Base context for resource execution."""
-
-    kwargs: Dict = {}
-    dependency_outputs: Dict[str, Path | None] = {}
-
-    model_config = {"extra": "allow"}
+from .context import SceneResourceContext
 
 
 class Resource:
@@ -23,7 +14,7 @@ class Resource:
         self.dependencies = dependencies or []
         self.func = func
 
-    def __call__(self, ctx: ResourceContext) -> Optional[Path]:
+    def __call__(self, ctx: SceneResourceContext) -> Optional[Path]:
         """Execute the resource function."""
         return self.func(ctx)
 
@@ -130,7 +121,7 @@ class DAGExecutor:
     def __init__(self, registry: ResourceRegistry):
         self.registry = registry
 
-    def execute(self, context: ResourceContext) -> Dict[str, Any]:
+    def execute(self, context: SceneResourceContext) -> Dict[str, Any]:
         """Execute all resources in dependency order."""
         execution_order = self.registry.get_execution_order()
         results = {}

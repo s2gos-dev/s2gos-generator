@@ -22,11 +22,8 @@ from .atmosphere import (
     ParticleLayerConfig,
     ThermophysicalConfig,
     UniformDistribution,
-    create_clear_atmosphere,
     create_custom_particle_layer,
-    create_hazy_atmosphere,
     create_heterogeneous_atmosphere_config,
-    create_maritime_atmosphere,
     create_molecular_atmosphere_config,
 )
 from .scene import (

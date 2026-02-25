@@ -1,6 +1,8 @@
 """Geometry utilities for S2GOS scene generation."""
 
 from pyproj import CRS, Transformer
+
+# Import coordinate system
 from shapely.geometry import Polygon
 
 

@@ -10,7 +10,8 @@ version = "0.0.1"
 dependencies = [
     "s2gos-utils",
     "geopandas>=0.13.0",
-    "xarray>=2023.1.0",
+    "xarray>=2023.1.0,<2025",
+    "xarray-regrid>=0.4.1,<0.5",
     "pyproj>=3.4.0",
     "shapely>=2.0.0",
     "trimesh>=3.20.0",
@@ -21,9 +22,11 @@ dependencies = [
     "rasterio>=1.3.0",
     "rioxarray>=0.13.0",
     "pyyaml>=6.0.0",
-    "zarr>=2.10.0",
-    "dask[array]>=2023.1.0",
+    "zarr>=2.18,<3.0",
+    "dask[array]>=2023.1.0,<2025",
+    "sf-hamilton[pandera]==1.78.0",
     "psutil>=5.9.0",
+    "graphviz>=0.20.0",
 ]
 
 [build-system]
@@ -44,6 +47,10 @@ s2gos_generator = { path = ".", editable = true }
 notebook = "jupyter notebook"
 lab = "jupyter lab"
 
+[tool.pixi.feature.docs.tasks]
+docs-build = "mkdocs build"
+docs-serve = "mkdocs serve"
+
 [project.optional-dependencies]
 test = ["pytest"]
 dev = [
@@ -51,13 +58,21 @@ dev = [
     "jupyterlab>=4.4.3,<5",
     "ipykernel>=6.29.5,<7",
 ]
-docs = ["mkdocs"]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.7.1,<10",
+    "mkdocstrings[python]>=0.26",
+    "griffe-pydantic>=1.0.0",
+]
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
 dev = { features = ["dev", "test", "docs"], solve-group = "default" }
 test = { features = ["test"], solve-group = "default" }
 
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+testpaths = "tests"
 
 [tool.ruff]
 include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]

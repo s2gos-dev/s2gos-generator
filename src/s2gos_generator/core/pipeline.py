@@ -1,650 +1,387 @@
+"""Scene generation pipeline with automatic dependency management."""
+
 import logging
-from typing import Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional
 
-import xarray as xr
+from s2gos_utils.io.paths import mkdir
 from s2gos_utils.scene import SceneDescription
-from upath import UPath
 
-from .assets import SceneAssets
-from .config import AtmosphereConfig, SceneGenConfig
-from .exceptions import DataNotFoundError, ProcessingError
-from ..assets.dem import DEMProcessor
-from ..assets.landcover import LandCoverProcessor
-from ..assets.mesh import MeshGenerator
-from ..assets.texture import TextureGenerator
-from ..scene import create_s2gos_scene
-from ..utils import create_aoi_polygon
+from .config import SceneGenConfig
+from .context import SceneResourceContext
+from .resource_registry import DAGExecutor, ResourceRegistry
 
 
 class SceneGenerationPipeline:
-    """Main pipeline orchestrator for generating 3D scenes from earth observation data."""
+    """Scene generation pipeline with automatic dependency resolution.
+
+    This pipeline automatically manages dependencies between scene generation
+    steps, ensuring resources are processed in the correct order.
+    """
 
     def __init__(self, config: SceneGenConfig):
-        """Initialize the pipeline with a configuration object."""
+        """Initialize the scene generation pipeline.
+
+        Args:
+            config: Scene generation configuration
+        """
         self.config = config
-        self.assets = SceneAssets()
+        self.xml_assets = []
+        self.xml_material_libraries = []
+        self.registry = ResourceRegistry()
+        self.executor = DAGExecutor(self.registry)
+        self._initialized = False
 
-        dem_index_path = config.data_sources.dem_index_path
-        dem_root_dir = config.data_sources.dem_root_dir
-        landcover_index_path = config.data_sources.landcover_index_path
-        landcover_root_dir = config.data_sources.landcover_root_dir
-        scene_name = config.scene_name
+    def initialize(self):
+        """Initialize the pipeline - call this before using the pipeline."""
+        if self._initialized:
+            return
 
-        self.dem_processor = DEMProcessor(
-            index_path=dem_index_path, dem_root_dir=dem_root_dir
-        )
-
-        self.landcover_processor = LandCoverProcessor(
-            index_path=landcover_index_path, landcover_root_dir=landcover_root_dir
-        )
-
-        self.mesh_generator = MeshGenerator()
-        self.texture_generator = TextureGenerator()
-
+        self._process_xml_scenes()
+        self._register_resources()
+        self.registry.update_scene_dependencies()
         self._setup_output_directories()
+        self._log_registered_resources()
 
-        logging.info(f"Pipeline initialized for scene '{scene_name}'")
+        self._initialized = True
+        logging.info(f"Pipeline initialized for scene '{self.config.scene_name}'")
 
-    @property
-    def scene_name(self) -> str:
-        """Get scene name from the configuration."""
-        return self.config.scene_name
+    def _register_resources(self):
+        """Register all pipeline resources and their inter-dependencies."""
+        # Import resource functions
+        from ..resources.aoi import (
+            generate_aoi,
+            generate_background_aoi,
+            generate_buffer_aoi,
+        )
+        from ..resources.assets import (
+            process_user_assets,
+            process_vegetation_exclusion_zones,
+        )
+        from ..resources.dem import process_buffer_dem, process_target_dem
+        from ..resources.hamster import process_hamster_data
+        from ..resources.landcover import (
+            process_background_landcover,
+            process_buffer_landcover,
+            process_target_landcover,
+        )
+        from ..resources.mesh import generate_buffer_mesh, generate_target_mesh
+        from ..resources.scene import create_scene_description
+        from ..resources.texture import (
+            generate_background_texture,
+            generate_buffer_texture,
+            generate_target_texture,
+        )
+        from ..resources.vegetation import process_target_vegetation
 
-    @property
-    def center_lat(self) -> float:
-        """Get center latitude from the configuration."""
-        return self.config.location.center_lat
+        # Register resources with their dependencies
 
-    @property
-    def center_lon(self) -> float:
-        """Get center longitude from the configuration."""
-        return self.config.location.center_lon
+        # Core resources - always included
+        self.registry.register("aoi", [], generate_aoi)
+        self.registry.register("target_dem", ["aoi"], process_target_dem)
+        self.registry.register("target_landcover", ["aoi"], process_target_landcover)
+        self.registry.register("target_mesh", ["target_dem"], generate_target_mesh)
+        self.registry.register(
+            "target_texture", ["target_landcover"], generate_target_texture
+        )
 
-    @property
-    def aoi_size_km(self) -> float:
-        """Get AOI size from the configuration."""
-        return self.config.location.aoi_size_km
+        if self.config.buffer is not None:
+            self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
+            self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
+            self.registry.register(
+                "buffer_landcover", ["buffer_aoi"], process_buffer_landcover
+            )
+            self.registry.register("buffer_mesh", ["buffer_dem"], generate_buffer_mesh)
+            self.registry.register(
+                "buffer_texture", ["buffer_landcover"], generate_buffer_texture
+            )
 
-    @property
-    def target_resolution_m(self) -> float:
-        """Get target resolution from the configuration."""
-        return self.config.processing.target_resolution_m
+        if self.config.background is not None:
+            self.registry.register("background_aoi", ["aoi"], generate_background_aoi)
+            self.registry.register(
+                "background_landcover", ["background_aoi"], process_background_landcover
+            )
+            self.registry.register(
+                "background_texture",
+                ["background_landcover"],
+                generate_background_texture,
+            )
 
-    @property
-    def generate_texture_preview(self) -> bool:
-        """Get texture preview setting from the configuration."""
-        return self.config.processing.generate_texture_preview
+        # Optional resources
+        if self.config.user_assets or self.xml_assets:
+            self.registry.register("user_assets", ["target_dem"], process_user_assets)
 
-    @property
-    def handle_dem_nans(self) -> bool:
-        """Get DEM NaN handling setting from the configuration."""
-        return self.config.processing.handle_dem_nans
+        if self.config.vegetation_exclusion_zones:
+            self.registry.register(
+                "vegetation_exclusion_zones", [], process_vegetation_exclusion_zones
+            )
 
-    @property
-    def dem_fillna_value(self) -> float:
-        """Get DEM fill value from the configuration."""
-        return self.config.processing.dem_fillna_value
+        if self.config.hamster and self.config.hamster.enabled:
+            # HAMSTER adapts to what was registered
+            hamster_deps = ["aoi"]
+            if "buffer_aoi" in self.registry.resources:
+                hamster_deps.append("buffer_aoi")
+            if "background_aoi" in self.registry.resources:
+                hamster_deps.append("background_aoi")
+            self.registry.register("hamster_data", hamster_deps, process_hamster_data)
 
-    @property
-    def enable_buffer(self) -> bool:
-        """Get buffer enable setting from the configuration."""
-        return self.config.has_buffer
+        if self.config.trees_enabled:
+            veg_deps = ["target_landcover", "target_dem"]
 
-    @property
-    def buffer_size_km(self) -> Optional[float]:
-        """Get buffer size from the configuration."""
-        return self.config.buffer.buffer_size_km if self.config.buffer else None
+            if self.config.vegetation_exclusion_zones:
+                veg_deps.append("vegetation_exclusion_zones")
 
-    @property
-    def buffer_resolution_m(self) -> float:
-        """Get buffer resolution from the configuration."""
-        return self.config.buffer.buffer_resolution_m if self.config.buffer else 100.0
+            self.registry.register(
+                "target_vegetation",
+                veg_deps,
+                process_target_vegetation,
+            )
 
-    @property
-    def background_elevation(self) -> float:
-        """Get background elevation from the configuration."""
-        return self.config.buffer.background_elevation if self.config.buffer else 0.0
+        # Scene description (dependencies will be updated by update_scene_dependencies)
+        self.registry.register(
+            "scene_description",
+            ["target_mesh", "target_texture"],
+            create_scene_description,
+        )
 
-    @property
-    def atmosphere_config(self) -> AtmosphereConfig:
-        """Get atmosphere configuration from the configuration."""
-        return self.config.atmosphere
+    def _get_all_assets(self):
+        """Get combined list of config assets + XML assets without mutating config."""
+        return list(self.config.user_assets) + list(self.xml_assets)
+
+    def _process_xml_scenes(self) -> None:
+        if not self.config.xml_scenes:
+            return
+
+        from .config import load_assets_from_xml
+
+        for xml_scene_config in self.config.xml_scenes:
+            # Generate meaningful prefix from XML filename if not specified
+            object_id_prefix = xml_scene_config.object_id_prefix
+            if object_id_prefix is None:
+                xml_path = xml_scene_config.xml_path.upath
+                object_id_prefix = xml_path.stem  # filename without extension
+
+            assets, materials = load_assets_from_xml(
+                xml_path=str(xml_scene_config.xml_path),
+                base_coordinate=xml_scene_config.base_coordinate,
+                coord_type=xml_scene_config.coord_type,
+                object_id_prefix=object_id_prefix,
+                elevation_offset=xml_scene_config.elevation_offset,
+                scale=xml_scene_config.scale,
+                fix_blender_coords=xml_scene_config.fix_blender_coords,
+                rotation_x=xml_scene_config.rotation_x,
+                rotation_y=xml_scene_config.rotation_y,
+                rotation_z=xml_scene_config.rotation_z,
+                material_mappings=xml_scene_config.material_mappings,
+                validate_materials=xml_scene_config.validate_materials,
+            )
+
+            self.xml_assets.extend(assets)
+            if materials:
+                self.xml_material_libraries.append(materials)
 
     def _setup_output_directories(self) -> None:
-        """Create the output directory structure."""
-        # Use config properties instead of manual calculation
-        self.output_dir = UPath(self.config.scene_output_dir)
-        self.data_dir = UPath(self.config.data_dir)
-        self.meshes_dir = UPath(self.config.meshes_dir)
-        self.textures_dir = UPath(self.config.textures_dir)
+        directories = [
+            self.config.scene_output_dir,
+            self.config.data_dir,
+            self.config.meshes_dir,
+            self.config.textures_dir,
+        ]
 
-        from s2gos_utils.io.paths import mkdir
-
-        for directory in [
-            self.output_dir,
-            self.data_dir,
-            self.meshes_dir,
-            self.textures_dir,
-        ]:
+        for directory in directories:
             mkdir(directory)
 
-    def generate_aoi(self) -> None:
-        """Generate the Area of Interest polygon."""
-        self.aoi_polygon = self._get_target_aoi_polygon()
-        logging.info(
-            f"Created AOI polygon: {self.aoi_size_km}km x {self.aoi_size_km}km"
-        )
+    def _log_registered_resources(self) -> None:
+        if not self.registry.resources:
+            logging.warning("No resources registered!")
+            return
 
-    def _get_target_aoi_polygon(self):
-        """Get or create the target AOI polygon (cached)."""
-        if not hasattr(self, '_target_aoi_polygon'):
-            self._target_aoi_polygon = create_aoi_polygon(
-                center_lat=self.center_lat,
-                center_lon=self.center_lon,
-                side_length_km=self.aoi_size_km,
-            )
-        return self._target_aoi_polygon
+        core_resources = []
+        buffer_resources = []
+        background_resources = []
+        optional_resources = []
 
-    def _get_buffer_aoi_polygon(self):
-        """Get or create the buffer AOI polygon (cached)."""
-        if not hasattr(self, '_buffer_aoi_polygon'):
-            if not self.enable_buffer or not self.buffer_size_km:
-                return None
-            self._buffer_aoi_polygon = create_aoi_polygon(
-                center_lat=self.center_lat,
-                center_lon=self.center_lon,
-                side_length_km=self.buffer_size_km,
-            )
-        return self._buffer_aoi_polygon
-
-    def _get_background_aoi_polygon(self):
-        """Get or create the background AOI polygon (cached)."""
-        if not hasattr(self, '_background_aoi_polygon'):
-            if not self.enable_buffer or not hasattr(self.config.buffer, 'background_size_km') or not self.config.buffer.background_size_km:
-                return None
-            self._background_aoi_polygon = create_aoi_polygon(
-                center_lat=self.center_lat,
-                center_lon=self.center_lon,
-                side_length_km=self.config.buffer.background_size_km,
-            )
-        return self._background_aoi_polygon
-
-    def process_dem(self) -> UPath:
-        """Process DEM data for the AOI."""
-        logging.info("=== Processing DEM Data ===")
-
-        dem_filename = f"dem_{self.scene_name}_{self.target_resolution_m}m.zarr"
-        dem_output_path = self.data_dir / dem_filename
-
-        self.dem_processor.generate_dem(
-            aoi_polygon=self.aoi_polygon,
-            output_path=dem_output_path,
-            fillna_value=self.dem_fillna_value,
-            target_resolution_m=self.target_resolution_m,
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            aoi_size_km=self.aoi_size_km,
-        )
-
-        self.assets.dem_file = dem_output_path
-        logging.info(f"DEM processing complete: {dem_output_path}")
-        return dem_output_path
-
-    def process_landcover(self) -> UPath:
-        """Process land cover data for the AOI."""
-        logging.info("=== Processing Land Cover Data ===")
-
-        landcover_filename = (
-            f"landcover_{self.scene_name}_{self.target_resolution_m}m.zarr"
-        )
-        landcover_output_path = self.data_dir / landcover_filename
-
-        self.landcover_processor.generate_landcover(
-            aoi_polygon=self.aoi_polygon,
-            output_path=landcover_output_path,
-            target_resolution_m=self.target_resolution_m,
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            aoi_size_km=self.aoi_size_km,
-        )
-
-        self.assets.landcover_file = landcover_output_path
-        logging.info(f"Land cover processing complete: {landcover_output_path}")
-        return landcover_output_path
-
-    def generate_mesh(self, dem_file_path: UPath) -> UPath:
-        """Generate 3D mesh from DEM data."""
-        logging.info("=== Generating 3D Mesh ===")
-
-        mesh_path = self.meshes_dir / f"{self.scene_name}_terrain.ply"
-        mesh = self.mesh_generator.generate_mesh_from_dem_file(
-            dem_file_path=dem_file_path,
-            output_path=mesh_path,
-            add_uvs=True,
-            handle_nans=self.handle_dem_nans,
-        )
-        self.assets.mesh_file = mesh_path
-
-        mesh_info = self.mesh_generator.get_mesh_info(mesh)
-        logging.info(
-            f"Generated mesh: {mesh_info['vertices']} vertices, {mesh_info['faces']} faces"
-        )
-
-        return mesh_path
-
-    def generate_textures(self, landcover_file_path: UPath) -> Tuple[UPath, UPath]:
-        """Generate texture maps from land cover data."""
-        logging.info("=== Generating Textures ===")
-
-        selection_texture_path, preview_texture_path = (
-            self.texture_generator.generate_textures_from_file(
-                landcover_file_path=landcover_file_path,
-                output_dir=self.textures_dir,
-                base_name=f"{self.scene_name}_{self.target_resolution_m}m",
-                create_preview=self.generate_texture_preview,
-            )
-        )
-
-        self.assets.selection_texture_file = selection_texture_path
-        if preview_texture_path:
-            self.assets.preview_texture_file = preview_texture_path
-
-        landcover_dataset = xr.open_zarr(landcover_file_path)
-        landcover_data = landcover_dataset["landcover"]
-        if isinstance(landcover_data, xr.Dataset):
-            landcover_data = landcover_data[list(landcover_data.data_vars.keys())[0]]
-
-        analysis = self.texture_generator.analyze_landcover_classes(landcover_data)
-        logging.info(
-            f"Texture analysis: {analysis['unique_classes']} land cover classes found"
-        )
-
-        return selection_texture_path, preview_texture_path
-
-    def process_buffer_dem(self) -> Optional[UPath]:
-        """Process DEM data for buffer area (if enabled)."""
-        if not self.enable_buffer or not self.buffer_size_km:
-            return None
-
-        logging.info("=== Processing Buffer DEM Data ===")
-
-        buffer_aoi = self._get_buffer_aoi_polygon()
-        if buffer_aoi is None:
-            return None
-
-        dem_filename = f"dem_buffer_{self.scene_name}_{self.buffer_resolution_m}m.zarr"
-        dem_output_path = self.data_dir / dem_filename
-
-        self.dem_processor.generate_dem(
-            aoi_polygon=buffer_aoi,
-            output_path=dem_output_path,
-            fillna_value=self.dem_fillna_value,
-            target_resolution_m=self.buffer_resolution_m,
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            aoi_size_km=self.buffer_size_km,
-        )
-
-        self.assets.buffer_dem_file = dem_output_path
-        logging.info(f"Buffer DEM processing complete: {dem_output_path}")
-        return dem_output_path
-
-    def process_buffer_landcover(self) -> Optional[UPath]:
-        """Process land cover data for buffer area (if enabled)."""
-        if not self.enable_buffer or not self.buffer_size_km:
-            return None
-
-        logging.info("=== Processing Buffer Land Cover Data ===")
-
-        buffer_aoi = self._get_buffer_aoi_polygon()
-        if buffer_aoi is None:
-            return None
-
-        landcover_filename = (
-            f"landcover_buffer_{self.scene_name}_{self.buffer_resolution_m}m.zarr"
-        )
-        landcover_output_path = self.data_dir / landcover_filename
-
-        self.landcover_processor.generate_landcover(
-            aoi_polygon=buffer_aoi,
-            output_path=landcover_output_path,
-            target_resolution_m=self.buffer_resolution_m,
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            aoi_size_km=self.buffer_size_km,
-        )
-
-        self.assets.buffer_landcover_file = landcover_output_path
-        logging.info(f"Buffer land cover processing complete: {landcover_output_path}")
-        return landcover_output_path
-
-    def process_background_landcover(self) -> Optional[UPath]:
-        """Process land cover data for background area (mirrors buffer system)."""
-        if not self.enable_buffer or not hasattr(
-            self.config.buffer, "background_size_km"
-        ):
-            return None
-
-        logging.info("=== Processing Background Land Cover Data ===")
-
-        background_aoi = self._get_background_aoi_polygon()
-        if background_aoi is None:
-            return None
-
-        landcover_filename = f"landcover_background_{self.scene_name}_{self.config.buffer.background_resolution_m}m.zarr"
-        landcover_output_path = self.data_dir / landcover_filename
-
-        self.landcover_processor.generate_landcover(
-            aoi_polygon=background_aoi,
-            output_path=landcover_output_path,
-            target_resolution_m=self.config.buffer.background_resolution_m,
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            aoi_size_km=self.config.buffer.background_size_km,
-        )
-
-        self.assets.background_landcover_file = landcover_output_path
-        logging.info(
-            f"Background land cover processing complete: {landcover_output_path}"
-        )
-        return landcover_output_path
-
-    def generate_background_textures(
-        self, background_landcover_file_path: UPath
-    ) -> Optional[Tuple[UPath, UPath]]:
-        """Generate texture maps for background area (mirrors buffer system)."""
-        if not background_landcover_file_path:
-            return None, None
-
-        logging.info("=== Generating Background Textures ===")
-
-        selection_texture_path, preview_texture_path = (
-            self.texture_generator.generate_textures_from_file(
-                landcover_file_path=background_landcover_file_path,
-                output_dir=self.textures_dir,
-                base_name=f"{self.scene_name}_background_{self.config.buffer.background_resolution_m}m",
-                create_preview=self.generate_texture_preview,
-            )
-        )
-
-        self.assets.background_selection_texture_file = selection_texture_path
-        if preview_texture_path:
-            self.assets.background_preview_texture_file = preview_texture_path
-
-        logging.info("Background texture generation complete")
-        return selection_texture_path, preview_texture_path
-
-    def generate_buffer_mesh(self, buffer_dem_file_path: UPath) -> Optional[UPath]:
-        """Generate 3D mesh for buffer area."""
-        if not buffer_dem_file_path:
-            return None
-
-        logging.info("=== Generating Buffer 3D Mesh ===")
-
-        mesh_path = self.meshes_dir / f"{self.scene_name}_buffer_terrain.ply"
-        mesh = self.mesh_generator.generate_mesh_from_dem_file(
-            dem_file_path=buffer_dem_file_path,
-            output_path=mesh_path,
-            add_uvs=True,
-            handle_nans=self.handle_dem_nans,
-        )
-        self.assets.buffer_mesh_file = mesh_path
-
-        mesh_info = self.mesh_generator.get_mesh_info(mesh)
-        logging.info(
-            f"Generated buffer mesh: {mesh_info['vertices']} vertices, {mesh_info['faces']} faces"
-        )
-
-        return mesh_path
-
-    def generate_buffer_textures(
-        self, buffer_landcover_file_path: UPath
-    ) -> Optional[Tuple[UPath, UPath]]:
-        """Generate texture maps for buffer area."""
-        if not buffer_landcover_file_path:
-            return None, None
-
-        logging.info("=== Generating Buffer Textures ===")
-
-        selection_texture_path, preview_texture_path = (
-            self.texture_generator.generate_textures_from_file(
-                landcover_file_path=buffer_landcover_file_path,
-                output_dir=self.textures_dir,
-                base_name=f"{self.scene_name}_buffer_{self.buffer_resolution_m}m",
-                create_preview=self.generate_texture_preview,
-            )
-        )
-
-        self.assets.buffer_selection_texture_file = selection_texture_path
-        if preview_texture_path:
-            self.assets.buffer_preview_texture_file = preview_texture_path
-
-        logging.info("Buffer texture generation complete")
-        return selection_texture_path, preview_texture_path
-
-    def _process_hamster_data(self) -> Optional[dict]:
-        """Process HAMSTER albedo data for the scene with spatial clipping for each surface area.
-        
-        Returns:
-            Dict with paths to saved HAMSTER albedo zarr files for each surface area, or None
-            Format: {'target': target_path, 'buffer': buffer_path, 'background': bg_path}
-        """
-        if self.config.hamster is None or not self.config.hamster.enabled:
-            return None
-            
-        try:
-            logging.info("Processing HAMSTER albedo data...")
-            
-            hamster_path = self.config.hamster.data_path
-            if not hamster_path.exists():
-                if self.config.hamster.fallback_on_error:
-                    logging.warning(f"HAMSTER data file not found: {hamster_path}, falling back to standard baresoil")
-                    return None
-                else:
-                    raise FileNotFoundError(f"HAMSTER data file not found: {hamster_path}")
-                    
-            ds = xr.open_dataset(hamster_path)
-            
-            if 'lat' in ds.dims:
-                ds = ds.sel(lat=slice(None, None, -1))
-                
-            if 'lat' in ds.dims and 'lon' in ds.dims:
-                ds = ds.swap_dims({"lat": "latitude", "lon": "longitude"})
-            
-            var_name = self.config.hamster.variable_name
-            if var_name not in ds.data_vars:
-                if self.config.hamster.fallback_on_error:
-                    logging.warning(f"Variable '{var_name}' not found in HAMSTER data, falling back to standard baresoil")
-                    return None
-                else:
-                    raise KeyError(f"Variable '{var_name}' not found in HAMSTER dataset")
-                    
-            albedo_data = ds[var_name]
-            
-            target_aoi_polygon = self._get_target_aoi_polygon()
-            target_bounds = target_aoi_polygon.bounds
-            target_lon_slice = slice(target_bounds[0], target_bounds[2])
-            target_lat_slice = slice(target_bounds[3], target_bounds[1])
-            
-            result = {}
-            
-            if 'latitude' in albedo_data.dims and 'longitude' in albedo_data.dims:
-                target_subset = albedo_data.sel(longitude=target_lon_slice, latitude=target_lat_slice)
-                target_dataset = target_subset.to_dataset(name=var_name)
-                target_filename = f"hamster_{self.scene_name}_target_{self.target_resolution_m}m.zarr"
-                target_path = self.data_dir / target_filename
-                self._save_hamster_dataset(target_dataset, target_path)
-                result['target'] = target_path
-                logging.info(f"Saved HAMSTER data for target area: {target_subset.sizes} -> {target_path}")
-                
-                if self.enable_buffer and self.buffer_size_km:
-                    buffer_aoi_polygon = self._get_buffer_aoi_polygon()
-                    if buffer_aoi_polygon is None:
-                        logging.warning("Buffer AOI polygon could not be created")
-                    else:
-                        buffer_bounds = buffer_aoi_polygon.bounds
-                        buffer_lon_slice = slice(buffer_bounds[0], buffer_bounds[2])
-                        buffer_lat_slice = slice(buffer_bounds[3], buffer_bounds[1])
-                        
-                        buffer_subset = albedo_data.sel(longitude=buffer_lon_slice, latitude=buffer_lat_slice)
-                        buffer_dataset = buffer_subset.to_dataset(name=var_name)
-                        buffer_filename = f"hamster_{self.scene_name}_buffer_{self.buffer_resolution_m}m.zarr"
-                        buffer_path = self.data_dir / buffer_filename
-                        self._save_hamster_dataset(buffer_dataset, buffer_path)
-                        result['buffer'] = buffer_path
-                        logging.info(f"Saved HAMSTER data for buffer area: {buffer_subset.sizes} -> {buffer_path}")
-                        
-                        if hasattr(self.config.buffer, 'background_size_km') and self.config.buffer.background_size_km:
-                            bg_aoi_polygon = self._get_background_aoi_polygon()
-                            if bg_aoi_polygon is None:
-                                logging.warning("Background AOI polygon could not be created")
-                            else:
-                                bg_bounds = bg_aoi_polygon.bounds
-                                bg_lon_slice = slice(bg_bounds[0], bg_bounds[2])
-                                bg_lat_slice = slice(bg_bounds[3], bg_bounds[1])
-                                
-                                bg_subset = albedo_data.sel(longitude=bg_lon_slice, latitude=bg_lat_slice)
-                                bg_dataset = bg_subset.to_dataset(name=var_name)
-                                bg_filename = f"hamster_{self.scene_name}_background_{self.config.buffer.background_resolution_m}m.zarr"
-                                bg_path = self.data_dir / bg_filename
-                                self._save_hamster_dataset(bg_dataset, bg_path)
-                                result['background'] = bg_path
-                                logging.info(f"Saved HAMSTER data for background area: {bg_subset.sizes} -> {bg_path}")
-            
-            logging.info(f"Successfully processed and saved HAMSTER data for {len(result)} surface areas")
-            return result if result else None
-            
-        except Exception as e:
-            if self.config.hamster.fallback_on_error:
-                logging.warning(f"Could not load HAMSTER data: {e}, falling back to standard baresoil")
-                return None
+        for resource_id in self.registry.resources.keys():
+            category = self.registry._categorize_resource(resource_id)
+            if category == "core":
+                core_resources.append(resource_id)
+            elif category == "buffer":
+                buffer_resources.append(resource_id)
+            elif category == "background":
+                background_resources.append(resource_id)
             else:
-                raise ProcessingError(f"Failed to load HAMSTER data: {e}", "hamster_processing", e) from e
+                optional_resources.append(resource_id)
 
-    def _save_hamster_dataset(self, dataset: xr.Dataset, output_path: UPath) -> None:
-        """Save HAMSTER dataset to zarr format."""
-        logging.info(f"Saving processed HAMSTER albedo data to '{output_path}'")
-        from s2gos_utils.io.paths import mkdir
+        total_resources = len(self.registry.resources)
+        logging.info(f"Registered {total_resources} resources:")
 
-        mkdir(output_path.parent)
-        dataset.to_zarr(output_path, mode="w")
-        logging.info("HAMSTER albedo data saved successfully.")
-
-    def _create_scene_description(self) -> SceneDescription:
-        """Create complete scene description from generated assets."""
-        buffer_mesh_path = None
-        buffer_texture_path = None
-        buffer_size_km = None
-
-        if (
-            self.enable_buffer
-            and self.assets.buffer_mesh_file
-            and self.assets.buffer_selection_texture_file
-        ):
-            buffer_mesh_path = str(
-                self.assets.buffer_mesh_file.relative_to(self.output_dir)
+        if core_resources:
+            logging.info(f"  Core ({len(core_resources)}): {', '.join(core_resources)}")
+        if buffer_resources:
+            logging.info(
+                f"  Buffer ({len(buffer_resources)}): {', '.join(buffer_resources)}"
             )
-            buffer_texture_path = str(
-                self.assets.buffer_selection_texture_file.relative_to(self.output_dir)
+        if background_resources:
+            logging.info(
+                f"  Background ({len(background_resources)}): {', '.join(background_resources)}"
             )
-            buffer_size_km = self.buffer_size_km
-
-        buffer_dem_file = None
-        if self.enable_buffer and self.assets.buffer_dem_file:
-            buffer_dem_file = str(
-                self.assets.buffer_dem_file.relative_to(self.output_dir)
+        if optional_resources:
+            logging.info(
+                f"  Optional ({len(optional_resources)}): {', '.join(optional_resources)}"
             )
 
-        dem_index_path = str(self.config.data_sources.dem_index_path)
-        landcover_index_path = str(self.config.data_sources.landcover_index_path)
-        material_config_path = self.config.data_sources.material_config_path
+    def run(self) -> SceneDescription:
+        """Execute the complete scene generation pipeline.
 
-        background_selection_texture = None
-        background_size_km = None
-        if (
-            self.enable_buffer
-            and self.assets.background_selection_texture_file
-            and hasattr(self.config.buffer, "background_size_km")
-        ):
-            background_selection_texture = str(
-                self.assets.background_selection_texture_file.relative_to(
-                    self.output_dir
-                )
-            )
-            background_size_km = self.config.buffer.background_size_km
-
-        hamster_data_paths = None
-        if self.config.hamster is not None and self.config.hamster.enabled:
-            hamster_data_paths = self._process_hamster_data()
-
-        return create_s2gos_scene(
-            scene_name=self.scene_name,
-            mesh_path=str(self.assets.mesh_file.relative_to(self.output_dir)),
-            texture_path=str(
-                self.assets.selection_texture_file.relative_to(self.output_dir)
-            ),
-            center_lat=self.center_lat,
-            center_lon=self.center_lon,
-            aoi_size_km=self.aoi_size_km,
-            resolution_m=self.target_resolution_m,
-            buffer_mesh_path=buffer_mesh_path,
-            buffer_texture_path=buffer_texture_path,
-            buffer_size_km=buffer_size_km,
-            output_dir=self.output_dir,
-            buffer_dem_file=buffer_dem_file,
-            background_elevation=self.background_elevation,
-            background_selection_texture=background_selection_texture,
-            background_size_km=background_size_km,
-            dem_index_path=dem_index_path,
-            landcover_index_path=landcover_index_path,
-            material_config_path=material_config_path,
-            atmosphere_config=self.atmosphere_config,
-            hamster_data_paths=hamster_data_paths,
-        )
-
-    def run_full_pipeline(self) -> SceneDescription:
-        """Execute the complete scene generation pipeline."""
-        logging.info(f"Starting full pipeline for scene '{self.scene_name}'")
+        Returns:
+            SceneDescription instance with complete scene configuration
+        """
+        self.initialize()
 
         try:
-            self.generate_aoi()
-            dem_file = self.process_dem()
-            landcover_file = self.process_landcover()
-            self.generate_mesh(dem_file)
-            self.generate_textures(landcover_file)
+            # Collect region materials if defined
+            region_materials = (
+                self.config.region_material_defs
+                if self.config.region_material_defs
+                else None
+            )
 
-            buffer_dem_file = None
-            buffer_landcover_file = None
+            ctx = SceneResourceContext(
+                config=self.config,
+                additional_material_libraries=self.xml_material_libraries,
+                combined_user_assets=self._get_all_assets(),
+            )
 
-            background_landcover_file = None
+            # Add region materials to context if available
+            if region_materials:
+                ctx.region_materials = region_materials
 
-            if self.enable_buffer:
-                buffer_dem_file = self.process_buffer_dem()
-                buffer_landcover_file = self.process_buffer_landcover()
-                if buffer_dem_file:
-                    self.generate_buffer_mesh(buffer_dem_file)
-                if buffer_landcover_file:
-                    self.generate_buffer_textures(buffer_landcover_file)
+            # Execute all resources using DAG executor
+            _ = self.executor.execute(ctx)
+            scene_description = getattr(ctx, "scene_description", None)
+            if scene_description is None:
+                raise RuntimeError("Scene description not found in pipeline results")
 
-                background_landcover_file = self.process_background_landcover()
-                if background_landcover_file:
-                    self.generate_background_textures(background_landcover_file)
-
-            scene_description = self._create_scene_description()
-            scene_description_file = self.output_dir / f"{self.scene_name}.yml"
-            scene_description.save_yaml(scene_description_file)
-
-            self.assets.config_file = scene_description_file
-
-            logging.info("=== Pipeline Complete ===")
-            logging.info(f"Scene description saved to: {scene_description_file}")
+            logging.info(f"Pipeline complete: {scene_description.name}")
 
             return scene_description
 
-        except FileNotFoundError as e:
-            raise DataNotFoundError(f"Required file not found: {e}", str(e))
-        except PermissionError as e:
-            raise DataNotFoundError(f"Permission denied accessing file: {e}", str(e))
         except Exception as e:
             logging.error(f"Pipeline failed: {e}")
-            raise ProcessingError("Pipeline execution failed", "pipeline", e)
+            raise
+
+    @property
+    def scene_name(self) -> str:
+        """Get scene name from configuration."""
+        return self.config.scene_name
+
+    def get_resource_dependencies(self) -> Dict[str, List[str]]:
+        """Get the current resource dependency graph.
+
+        Returns:
+            Dictionary mapping resource IDs to their dependencies
+        """
+        self.initialize()
+        dependencies = {}
+
+        for resource in self.registry.get_resource_list():
+            dependencies[resource.id] = resource.dependencies or []
+
+        return dependencies
+
+    def visualize_dag(
+        self, output_path: Optional[Path] = None, format: str = "png"
+    ) -> Optional[Path]:
+        """Render the pipeline dependency graph to an image file using Graphviz.
+
+        Nodes are colour-coded by resource category (AOI, DEM, landcover,
+        mesh, texture, etc.) and shaped by type (ellipse for AOIs, diamond for
+        meshes, double-octagon for the final scene description).  The output
+        file is written next to the scene output directory when ``output_path``
+        is not supplied.
+
+        Args:
+            output_path: Destination path for the rendered image (without
+                extension). Defaults to
+                ``<scene_output_dir>/<scene_name>_dag``.
+            format: Graphviz output format (e.g. ``"png"``, ``"svg"``).
+
+        Returns:
+            Path to the rendered file, or ``None`` if Graphviz is not
+            installed or rendering fails.
+        """
+        try:
+            import graphviz
+
+            self.initialize()
+            resources = self.registry.get_resource_list()
+
+            if output_path is None:
+                output_path = self.config.scene_output_dir / f"{self.scene_name}_dag"
+
+            dot = graphviz.Digraph(
+                comment=f"Scene Generation Pipeline - {self.scene_name}"
+            )
+            dot.attr(rankdir="TB")
+            dot.attr("graph", bgcolor="white", fontname="Arial", fontsize="14")
+            dot.attr("node", fontname="Arial", fontsize="12", style="filled")
+            dot.attr("edge", fontname="Arial", fontsize="10")
+
+            resource_colors = {
+                "aoi": "#90EE90",
+                "buffer_aoi": "#98FB98",
+                "background_aoi": "#F0FFF0",
+                "target_dem": "#87CEEB",
+                "buffer_dem": "#B0E0E6",
+                "target_landcover": "#DDA0DD",
+                "buffer_landcover": "#E6E6FA",
+                "background_landcover": "#F8F8FF",
+                "target_mesh": "#FFB6C1",
+                "buffer_mesh": "#FFC0CB",
+                "target_texture": "#FFFFE0",
+                "buffer_texture": "#FFFACD",
+                "background_texture": "#FFFFF0",
+                "user_assets": "#FFA07A",
+                "hamster_data": "#20B2AA",
+                "scene_description": "#FF6347",
+            }
+
+            for resource in resources:
+                color = resource_colors.get(resource.id, "#D3D3D3")
+
+                if "aoi" in resource.id:
+                    dot.node(resource.id, resource.id, fillcolor=color, shape="ellipse")
+                elif resource.id == "scene_description":
+                    dot.node(
+                        resource.id, resource.id, fillcolor=color, shape="doubleoctagon"
+                    )
+                elif "mesh" in resource.id or resource.id == "user_assets":
+                    dot.node(resource.id, resource.id, fillcolor=color, shape="diamond")
+                else:
+                    dot.node(resource.id, resource.id, fillcolor=color, shape="box")
+
+            for resource in resources:
+                if resource.dependencies:
+                    for dependency in resource.dependencies:
+                        dot.edge(dependency, resource.id, color="black")
+
+            legend_text = (
+                f"Scene Generation Pipeline: {self.scene_name}\\n"
+                f"Generated: {self.config.created_at.strftime('%Y-%m-%d %H:%M')}\\n"
+                f"Shapes: ○ AOI, ◊ Mesh, □ Array, ⬢ Final"
+            )
+            dot.attr(label=legend_text)
+            dot.attr(labelloc="t")
+
+            output_file = dot.render(str(output_path), format=format, cleanup=True)
+            logging.info(f"Pipeline visualization saved to: {output_file}")
+            return Path(output_file)
+
+        except ImportError:
+            logging.warning(
+                "Pipeline visualization not available (graphviz not installed)"
+            )
+            return None
+        except Exception as e:
+            logging.warning(f"Could not create pipeline visualization: {e}")
+            return None

@@ -1,0 +1,3 @@
+[submodule "resources/data"]
+	path = resources/data
+	url = https://github.com/s2gos-dev/s2gos-data.git

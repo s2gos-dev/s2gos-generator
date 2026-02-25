@@ -17,7 +17,7 @@ The S2GOS Scene Generator creates synthetic scenes for Earth observation simulat
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone --recursive <repository-url>
 cd s2gos/packages/s2gos-generator
 
 # Install development environment with pixi

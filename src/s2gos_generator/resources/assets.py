@@ -1,7 +1,6 @@
 """User asset processing resources."""
 
 import logging
-import shutil
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
 

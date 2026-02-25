@@ -16,9 +16,7 @@ class SceneGenerationPipeline:
     """Scene generation pipeline with automatic dependency resolution.
 
     This pipeline automatically manages dependencies between scene generation
-    steps, ensuring resources are processed in the correct order. The
-    architecture is inspired by modern terrain generation systems like
-    Microsoft Flight Simulator.
+    steps, ensuring resources are processed in the correct order.
     """
 
     def __init__(self, config: SceneGenConfig):
@@ -49,7 +47,7 @@ class SceneGenerationPipeline:
         logging.info(f"Pipeline initialized for scene '{self.config.scene_name}'")
 
     def _register_resources(self):
-        """Explicitly register all resources with their dependencies."""
+        """Register all pipeline resources and their inter-dependencies."""
         # Import resource functions
         from ..resources.aoi import (
             generate_aoi,
@@ -87,7 +85,7 @@ class SceneGenerationPipeline:
             "target_texture", ["target_landcover"], generate_target_texture
         )
 
-        if self.config.enable_buffer:
+        if self.config.buffer is not None:
             self.registry.register("buffer_aoi", ["aoi"], generate_buffer_aoi)
             self.registry.register("buffer_dem", ["buffer_aoi"], process_buffer_dem)
             self.registry.register(
@@ -98,7 +96,7 @@ class SceneGenerationPipeline:
                 "buffer_texture", ["buffer_landcover"], generate_buffer_texture
             )
 
-        if self.config.enable_background:
+        if self.config.background is not None:
             self.registry.register("background_aoi", ["aoi"], generate_background_aoi)
             self.registry.register(
                 "background_landcover", ["background_aoi"], process_background_landcover
@@ -294,6 +292,24 @@ class SceneGenerationPipeline:
     def visualize_dag(
         self, output_path: Optional[Path] = None, format: str = "png"
     ) -> Optional[Path]:
+        """Render the pipeline dependency graph to an image file using Graphviz.
+
+        Nodes are colour-coded by resource category (AOI, DEM, landcover,
+        mesh, texture, etc.) and shaped by type (ellipse for AOIs, diamond for
+        meshes, double-octagon for the final scene description).  The output
+        file is written next to the scene output directory when ``output_path``
+        is not supplied.
+
+        Args:
+            output_path: Destination path for the rendered image (without
+                extension). Defaults to
+                ``<scene_output_dir>/<scene_name>_dag``.
+            format: Graphviz output format (e.g. ``"png"``, ``"svg"``).
+
+        Returns:
+            Path to the rendered file, or ``None`` if Graphviz is not
+            installed or rendering fails.
+        """
         try:
             import graphviz
 

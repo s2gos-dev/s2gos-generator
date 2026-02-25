@@ -68,9 +68,9 @@ def process_buffer_landcover(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Buffer AOI polygon not found in context")
         return None
 
-    buffer_resolution_m = ctx.config.buffer_resolution_m
+    buffer_resolution_m = ctx.config.buffer.resolution_m
     output_path = _process_landcover(
-        ctx, buffer_aoi_polygon, buffer_resolution_m, "landcover_buffer", ctx.config.buffer_size_km
+        ctx, buffer_aoi_polygon, buffer_resolution_m, "landcover_buffer", ctx.config.buffer.size_km
     )
     ctx.assets.buffer_landcover_file = output_path
 
@@ -95,13 +95,13 @@ def process_background_landcover(ctx: SceneResourceContext) -> Optional[Path]:
         logging.warning("Background AOI polygon not found in context")
         return None
 
-    background_resolution_m = ctx.config.background_resolution_m
+    background_resolution_m = ctx.config.background.resolution_m
     output_path = _process_landcover(
         ctx,
         background_aoi_polygon,
         background_resolution_m,
         "landcover_background",
-        ctx.config.background_size_km,
+        ctx.config.background.size_km,
     )
     ctx.assets.background_landcover_file = output_path
 

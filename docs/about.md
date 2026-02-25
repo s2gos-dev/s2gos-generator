@@ -17,8 +17,3 @@ using [ruff](https://docs.astral.sh/ruff/):
 ruff format
 ruff check
 ```
-
-## License
-
-The S2GOS client is open source made available under the terms and conditions of the 
-[Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0.html).

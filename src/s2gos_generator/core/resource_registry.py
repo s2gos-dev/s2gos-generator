@@ -1,5 +1,3 @@
-"""Clean resource registry and DAG execution without singleton pattern."""
-
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -20,7 +18,7 @@ class Resource:
 
 
 class ResourceRegistry:
-    """Registry for managing resource definitions without singleton pattern."""
+    """Registry for managing resource definitions."""
 
     def __init__(self):
         self.resources: Dict[str, Resource] = {}

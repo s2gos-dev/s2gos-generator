@@ -19,9 +19,9 @@ def _make_ctx(
     ctx.center_lat = center_lat
     ctx.center_lon = center_lon
     ctx.aoi_size_km = aoi_size_km
-    # buffer and background sizes live under ctx.config
-    ctx.config.buffer_size_km = buffer_size_km
-    ctx.config.background_size_km = background_size_km
+    # buffer and background sizes live under ctx.config sub-models
+    ctx.config.buffer.size_km = buffer_size_km
+    ctx.config.background.size_km = background_size_km
     ctx._target_aoi_polygon = None
     ctx._buffer_aoi_polygon = None
     ctx._background_aoi_polygon = None

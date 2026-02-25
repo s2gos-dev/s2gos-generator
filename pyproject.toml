@@ -47,6 +47,10 @@ s2gos_generator = { path = ".", editable = true }
 notebook = "jupyter notebook"
 lab = "jupyter lab"
 
+[tool.pixi.feature.docs.tasks]
+docs-build = "mkdocs build"
+docs-serve = "mkdocs serve"
+
 [project.optional-dependencies]
 test = ["pytest"]
 dev = [
@@ -54,7 +58,12 @@ dev = [
     "jupyterlab>=4.4.3,<5",
     "ipykernel>=6.29.5,<7",
 ]
-docs = ["mkdocs","mkdocs-material>=9.7.1,<10"]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.7.1,<10",
+    "mkdocstrings[python]>=0.26",
+    "griffe-pydantic>=1.0.0",
+]
 
 [tool.pixi.environments]
 default = { solve-group = "default" }

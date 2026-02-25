@@ -84,12 +84,12 @@ class SceneResourceContext:
     @property
     def has_buffer(self) -> bool:
         """Check if buffer processing is enabled."""
-        return self.config.enable_buffer
+        return self.config.buffer is not None
 
     @property
     def has_background(self) -> bool:
         """Check if background processing is enabled."""
-        return self.config.enable_background
+        return self.config.background is not None
 
     @property
     def has_hamster(self) -> bool:
@@ -99,11 +99,6 @@ class SceneResourceContext:
     @property
     def coordinate_system(self):
         """Get cached coordinate system for this scene.
-
-        Lazily creates and caches the coordinate system to avoid expensive
-        pyproj initialization overhead (CRS and Transformer creation).
-        This is reused across material region processing for target, buffer,
-        and background areas.
 
         Returns:
             CoordinateSystem instance for this scene's center location

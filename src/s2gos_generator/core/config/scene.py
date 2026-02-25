@@ -36,6 +36,43 @@ class Month(str, Enum):
     DECEMBER = "december"
 
 
+class SnowConfig(BaseModel):
+    """Seasonal snow configuration. Presence (non-None) enables snow."""
+
+    season_month: Month = Field(
+        ..., description="Month for seasonal snow calculation (JUNE or DECEMBER)"
+    )
+    material_index: int = Field(
+        6, description="Material index to use for snow coverage"
+    )
+    thermoprops: Optional[ThermophysicalConfig] = Field(
+        None,
+        description="Optional CAMS thermoprops for snow temperature calculation. "
+        "If None, uses synthetic temperature model.",
+    )
+
+
+class BufferConfig(BaseModel):
+    """Buffer area configuration. Presence (non-None) enables buffer processing."""
+
+    size_km: float = Field(60.0, gt=0.0, description="Buffer size in kilometers")
+    resolution_m: float = Field(
+        100.0, gt=0.0, description="Buffer resolution in meters"
+    )
+
+
+class BackgroundConfig(BaseModel):
+    """Background area configuration. Presence (non-None) enables background processing."""
+
+    size_km: float = Field(
+        200.0, gt=0.0, description="Background area size in kilometers"
+    )
+    resolution_m: float = Field(
+        200.0, gt=0.0, description="Background resolution in meters"
+    )
+    elevation: float = Field(0.0, description="Background elevation in meters")
+
+
 class SceneLocation(BaseModel):
     """Geographic location configuration."""
 
@@ -135,7 +172,9 @@ class SceneGenConfig(BaseModel):
     scene_name: str = Field(
         ..., min_length=1, description="Scene name (used for output files)"
     )
-    description: Optional[str] = Field(None, description="Scene description")
+    description: Optional[str] = Field(
+        None, description="Metadata, only used in case of serialization"
+    )
 
     location: SceneLocation = Field(..., description="Geographic location")
     data_sources: DataSources = Field(..., description="Data source configuration")
@@ -145,20 +184,8 @@ class SceneGenConfig(BaseModel):
         30.0, gt=0.0, description="Target resolution in meters"
     )
 
-    apply_seasonal_snow: bool = Field(
-        default=False, description="Apply seasonal snow adjustment to terrain materials"
-    )
-    snow_season_month: Optional[Month] = Field(
-        default=None,
-        description="Month for seasonal snow calculation (June or December)",
-    )
-    snow_material_index: int = Field(
-        default=6, description="Material index to use for snow coverage"
-    )
-    snow_thermoprops: Optional[ThermophysicalConfig] = Field(
-        None,
-        description="Optional CAMS thermoprops for snow temperature calculation. "
-        "If None, uses synthetic temperature model.",
+    snow: Optional[SnowConfig] = Field(
+        None, description="Seasonal snow configuration (None disables snow)"
     )
 
     processing: ProcessingOptions = Field(
@@ -168,24 +195,11 @@ class SceneGenConfig(BaseModel):
         default_factory=_default_atmosphere_config,
         description="Atmosphere configuration",
     )
-    enable_buffer: bool = Field(False, description="Enable buffer area processing")
-    enable_background: bool = Field(
-        False, description="Enable background area processing"
+    buffer: Optional[BufferConfig] = Field(
+        None, description="Buffer area configuration (None disables buffer)"
     )
-
-    buffer_size_km: float = Field(60.0, gt=0.0, description="Buffer size in kilometers")
-    buffer_resolution_m: float = Field(
-        100.0, gt=0.0, description="Buffer resolution in meters"
-    )
-
-    background_size_km: float = Field(
-        200.0, gt=0.0, description="Background area size in kilometers"
-    )
-    background_resolution_m: float = Field(
-        200.0, gt=0.0, description="Background resolution in meters"
-    )
-    background_elevation: float = Field(
-        0.0, description="Background elevation in meters"
+    background: Optional[BackgroundConfig] = Field(
+        None, description="Background area configuration (None disables background)"
     )
     hamster: Optional[HamsterConfig] = Field(
         None, description="HAMSTER albedo data configuration for baresoil"
@@ -241,21 +255,10 @@ class SceneGenConfig(BaseModel):
     @model_validator(mode="after")
     def validate_scene_config(self):
         """Validate complete scene configuration."""
-        if self.enable_buffer:
-            if self.buffer_size_km <= self.location.aoi_size_km:
+        if self.buffer is not None:
+            if self.buffer.size_km <= self.location.aoi_size_km:
                 raise ValueError("Buffer size must be larger than AOI size")
 
-        return self
-
-    @model_validator(mode="after")
-    def validate_snow_config(self):
-        """Validate snow configuration consistency."""
-        if self.snow_thermoprops is not None:
-            if self.snow_season_month is None:
-                raise ValueError(
-                    "snow_thermoprops requires snow_season_month to be set "
-                    "(JUNE or DECEMBER)"
-                )
         return self
 
     @property
@@ -279,7 +282,7 @@ class SceneGenConfig(BaseModel):
 
     @classmethod
     def from_json(cls, path: PathRef) -> SceneGenConfig:
-        """Load from JSON file with version compatibility checking."""
+        """Load from JSON file."""
         with open_file(path, "r") as f:
             data = json.load(f)
 

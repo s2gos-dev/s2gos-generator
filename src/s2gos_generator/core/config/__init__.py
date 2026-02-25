@@ -27,11 +27,14 @@ from .atmosphere import (
     create_molecular_atmosphere_config,
 )
 from .scene import (
+    BackgroundConfig,
+    BufferConfig,
     DataSources,
     Month,
     ProcessingOptions,
     SceneGenConfig,
     SceneLocation,
+    SnowConfig,
     create_scene_config,
 )
 from .vegetation import (
@@ -86,5 +89,8 @@ __all__ = [
     "DataSources",
     "ProcessingOptions",
     "SceneGenConfig",
+    "SnowConfig",
+    "BufferConfig",
+    "BackgroundConfig",
     "create_scene_config",
 ]

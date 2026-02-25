@@ -99,7 +99,16 @@ class ThermophysicalConfig(BaseModel):
 
 
 class MolecularAtmosphereConfig(BaseModel):
-    """Configuration for molecular atmosphere using Eradiate's MolecularAtmosphere."""
+    """Configuration for a purely molecular (Rayleigh-scattering) atmosphere.
+
+    Attributes:
+        type: Discriminator literal fixed to ``"molecular"``.
+        thermoprops: Thermophysical profile (identifier or CAMS NetCDF file).
+        absorption_database: Database for gas absorption.
+        ``None`` disables absorption (equivalent to ``has_absorption=False``).
+        has_absorption: Enable gas absorption calculations.
+        has_scattering: Enable Rayleigh scattering calculations.
+    """
 
     type: Literal["molecular"] = "molecular"
     thermoprops: ThermophysicalConfig = Field(
@@ -114,7 +123,19 @@ class MolecularAtmosphereConfig(BaseModel):
 
 
 class HomogeneousAtmosphereConfig(BaseModel):
-    """Configuration for homogeneous atmosphere with uniform optical properties."""
+    """Configuration for a spatially uniform (homogeneous) aerosol atmosphere.
+
+    Attributes:
+        type: Discriminator literal fixed to ``"homogeneous"``.
+        aerosol_dataset: Aerosol dataset defining scattering (``sigma_s``) and
+            absorption (``sigma_a``) phase-function properties.
+        optical_thickness: Aerosol optical depth at the reference wavelength.
+        scale_height: Exponential decay scale height (metres) for the vertical
+            aerosol profile.
+        reference_wavelength: Wavelength (nm) at which ``optical_thickness``
+            is specified.
+        has_absorption: Enable aerosol absorption.
+    """
 
     type: Literal["homogeneous"] = "homogeneous"
     aerosol_dataset: AerosolDataset = Field(
@@ -139,7 +160,15 @@ class ParticleDistribution(BaseModel):
 
 
 class ExponentialDistribution(ParticleDistribution):
-    """Exponential particle distribution - direct Eradiate API mapping."""
+    """Exponential vertical decay profile for particle concentration,
+    see Eradiate documentation for more details.
+
+    Attributes:
+        type: Discriminator literal fixed to ``"exponential"``.
+        rate: Decay rate ``λ`` (1/m). Mutually exclusive with ``scale``.
+        scale: Scale parameter ``β = 1/λ`` (m). Mutually exclusive with
+            ``rate``.
+    """
 
     type: Literal["exponential"] = "exponential"
     rate: Optional[float] = Field(
@@ -156,7 +185,14 @@ class ExponentialDistribution(ParticleDistribution):
 
 
 class GaussianDistribution(ParticleDistribution):
-    """Gaussian particle distribution."""
+    """Gaussian vertical profile for particle concentration,
+    see Eradiate documentation for more details.
+
+    Attributes:
+        type: Discriminator literal fixed to ``"gaussian"``.
+        center_altitude: Altitude of peak concentration (m).
+        width: Standard deviation of the distribution (m).
+    """
 
     type: Literal["gaussian"] = "gaussian"
     center_altitude: float = Field(..., description="Center altitude in meters")
@@ -164,7 +200,11 @@ class GaussianDistribution(ParticleDistribution):
 
 
 class UniformDistribution(ParticleDistribution):
-    """Uniform particle distribution."""
+    """Constant (uniform) vertical distribution of particle concentration.
+
+    Attributes:
+        type: Discriminator literal fixed to ``"uniform"``.
+    """
 
     type: Literal["uniform"] = "uniform"
 
@@ -175,7 +215,20 @@ DistributionType = Union[
 
 
 class ParticleLayerConfig(BaseModel):
-    """Enhanced particle layer configuration."""
+    """Configuration for a particle layer.
+
+    Attributes:
+        aerosol_dataset: Aerosol dataset. Either an ``AerosolDataset`` enum
+         value or a path to a custom NetCDF file.
+        optical_thickness: Column aerosol optical depth within this layer.
+        altitude_bottom: Lower bound of the layer (m above sea level).
+        altitude_top: Upper bound of the layer (m above sea level).
+        distribution: Vertical distribution of particle concentration within
+            the layer bounds.
+        reference_wavelength: Wavelength (nm) at which ``optical_thickness``
+            is defined.
+        has_absorption: Enable particle absorption.
+    """
 
     aerosol_dataset: Union[AerosolDataset, str] = Field(
         ...,
@@ -224,13 +277,25 @@ class ParticleLayerConfig(BaseModel):
 
 
 class HeterogeneousAtmosphereConfig(BaseModel):
-    """Configuration for heterogeneous atmosphere with molecular background and particle layers."""
+    """Configuration for a vertically-resolved heterogeneous atmosphere.
+
+    Combines an optional molecular background (Rayleigh scattering and gas
+    absorption) with one or more discrete particle layers.
+    At least one of ``molecular`` or ``particle_layers`` must be specified.
+
+    Attributes:
+        type: Discriminator literal fixed to ``"heterogeneous"``.
+        molecular: Molecular atmosphere providing the Rayleigh-scattering
+            background. ``None`` omits the molecular component.
+        particle_layers: Ordered list of aerosol or particle layers stacked
+            within the atmosphere column.
+    """
 
     type: Literal["heterogeneous"] = "heterogeneous"
-    molecular: Optional[MolecularAtmosphereConfig] = Field(
+    molecular: MolecularAtmosphereConfig = Field(
         None, description="Molecular atmosphere configuration"
     )
-    particle_layers: Optional[list[ParticleLayerConfig]] = Field(
+    particle_layers: list[ParticleLayerConfig] = Field(
         None, description="Particle layer configurations"
     )
 

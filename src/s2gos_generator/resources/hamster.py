@@ -97,8 +97,8 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
             path = _crop_and_save_area(
                 albedo_data,
                 "buffer",
-                ctx.config.buffer_size_km,
-                f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer_resolution_m}m.zarr",
+                ctx.config.buffer.size_km,
+                f"hamster_{ctx.scene_name}_buffer_{ctx.config.buffer.resolution_m}m.zarr",
                 ctx.data_dir,
                 var_name,
             )
@@ -109,8 +109,8 @@ def process_hamster_data(ctx: SceneResourceContext) -> Optional[Path]:
             path = _crop_and_save_area(
                 albedo_data,
                 "background",
-                ctx.config.background_size_km,
-                f"hamster_{ctx.scene_name}_background_{ctx.config.background_resolution_m}m.zarr",
+                ctx.config.background.size_km,
+                f"hamster_{ctx.scene_name}_background_{ctx.config.background.resolution_m}m.zarr",
                 ctx.data_dir,
                 var_name,
             )

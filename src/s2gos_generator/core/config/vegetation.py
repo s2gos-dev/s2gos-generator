@@ -132,6 +132,7 @@ class VegetationSpecies(BaseModel):
 
     Defines placement parameters for a vegetation type (e.g., oak trees, shrubs).
     Multiple species can be assigned to the same landcover class for mixed vegetation.
+    Instances are placed within pixels of the matched landcover class in the target area.
     """
 
     name: str = Field(
@@ -227,17 +228,6 @@ class VegetationPlacementConfig(BaseModel):
     Configuration levels:
     - Per-species parameters: density, scale, asset (in VegetationSpecies)
     - Global parameters: spacing, variation, limits (this class)
-
-    Example:
-        config = VegetationPlacementConfig(
-            enabled=True,
-            landcover_species_mapping={
-                10: [VegetationSpecies(name="oak", asset_xml_path="oak.xml", ...)],
-                20: [VegetationSpecies(name="shrub", asset_xml_path="shrub.xml", ...)]
-            },
-            min_spacing=2.0,
-            density_variation=0.3
-        )
     """
 
     enabled: bool = Field(

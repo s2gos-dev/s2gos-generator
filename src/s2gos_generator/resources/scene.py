@@ -47,7 +47,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
     ):
         buffer_mesh_path = str(buffer_mesh_file.relative_to(ctx.output_dir))
         buffer_texture_path = str(buffer_texture_file.relative_to(ctx.output_dir))
-        buffer_size_km = ctx.config.buffer_size_km
+        buffer_size_km = ctx.config.buffer.size_km
 
     background_selection_texture = None
     background_size_km = None
@@ -57,7 +57,7 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         background_selection_texture = str(
             background_texture_file.relative_to(ctx.output_dir)
         )
-        background_size_km = ctx.config.background_size_km
+        background_size_km = ctx.config.background.size_km
 
     buffer_dem_file = None
     if ctx.has_buffer and ctx.assets.buffer_dem_file:
@@ -150,8 +150,8 @@ def create_scene_description(ctx: SceneResourceContext) -> Optional[Path]:
         buffer_size_km=buffer_size_km,
         output_dir=ctx.output_dir,
         buffer_dem_file=buffer_dem_file,
-        background_elevation=ctx.config.background_elevation
-        if ctx.config.enable_background
+        background_elevation=ctx.config.background.elevation
+        if ctx.config.background is not None
         else None,
         background_selection_texture=background_selection_texture,
         background_size_km=background_size_km,

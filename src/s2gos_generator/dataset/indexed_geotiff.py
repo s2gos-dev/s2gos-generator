@@ -23,6 +23,24 @@ def _load_index_gdf(index_path: PathRef):
 
 
 class IndexedGeoTiff(Dataset):
+    """Spatially indexed collection of GeoTIFF tiles.
+
+    Provides efficient spatial querying over a large archive of GeoTIFF files
+    using a pre-built GeoDataFrame index (stored as a ``.feather`` file).
+    Each row in the index describes one tile and includes a path column
+    pointing to the corresponding GeoTIFF relative to ``root_directory``.
+
+    Attributes:
+        index_path: Path to the ``.feather`` index file.
+        root_directory: Root directory under which tile paths in the index
+            are resolved.
+        path_column: Column name in the index that holds relative tile paths.
+            Auto-detected from any column whose name contains ``"path"`` when
+            left as ``None``.
+        variable_name: Optional variable name used when opening tiles with
+            ``xarray``.
+    """
+
     index_path: PathRef = Field()
     root_directory: PathRef = Field()
     path_column: str | None = Field(default=None)
@@ -61,6 +79,23 @@ class IndexedGeoTiff(Dataset):
         )
 
     def query(self, polygon: Polygon, **kwargs) -> list[UPath]:
+        """Return paths of all GeoTIFF tiles that intersect *polygon*.
+
+        Performs a spatial join between the index GeoDataFrame and the
+        supplied polygon to identify overlapping tiles.
+
+        Args:
+            polygon: Query region in EPSG:4326 coordinates.
+            **kwargs: Optional keyword arguments.  ``path_column`` overrides
+                the instance-level column name for this query.
+
+        Returns:
+            List of authenticated ``UPath`` objects for each matching tile.
+
+        Raises:
+            ValueError: If no path column can be determined.
+            FileNotFoundError: If no tiles intersect *polygon*.
+        """
         # Attempt to find a path column in the index file
         path_column = kwargs.get("path_column", self.path_column)
 
@@ -81,4 +116,14 @@ class IndexedGeoTiff(Dataset):
         return filepaths
 
     def open(self, path, **kwargs):
+        """Open a single GeoTIFF tile as an ``xarray.Dataset``.
+
+        Args:
+            path: Path to the GeoTIFF file to open.
+            **kwargs: Additional keyword arguments forwarded to
+                ``open_dataset`` (e.g. ``chunks`` for Dask).
+
+        Returns:
+            An ``xarray.Dataset`` backed by ``rasterio``.
+        """
         return open_dataset(path, engine=self._xr_engine, **kwargs)

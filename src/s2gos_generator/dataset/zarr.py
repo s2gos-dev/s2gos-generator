@@ -12,6 +12,18 @@ from .dataset import Dataset
 
 
 class Zarr(Dataset):
+    """Zarr-backed dataset for cloud-optimised geospatial data.
+
+    Wraps a single Zarr store (local or remote) and provides spatial
+    querying by comparing the polygon extent against the dataset's bounding
+    box.  The entire store is returned when it intersects the query polygon.
+
+    Attributes:
+        path: Path or URL to the Zarr store.
+        variable_name: Optional variable name used when slicing the opened
+            dataset.
+    """
+
     path: PathRef = Field()
     variable_name: str | None = Field(default=None)
     _xr_engine: str = PrivateAttr("zarr")
@@ -36,6 +48,20 @@ class Zarr(Dataset):
 
 
     def query(self, polygon: Polygon, **kwargs) -> list[PathRef]:
+        """Return the store path if its spatial extent intersects *polygon*.
+
+        Opens the Zarr store to read coordinate bounds, then checks whether
+        the dataset bounding box overlaps the supplied polygon.  Supports
+        datasets with ``(x, y)`` or ``(lon, lat)`` coordinate dimensions.
+
+        Args:
+            polygon: Query region in EPSG:4326 coordinates.
+            **kwargs: Accepted but unused; present for interface compatibility.
+
+        Returns:
+            A single-element list ``[self.path]`` when there is spatial
+            overlap, or an empty list when there is none.
+        """
         with self.open() as ds:
             # Detect coordinate system (fix elif bug)
             if "x" in ds.indexes and "y" in ds.indexes:
@@ -76,7 +102,20 @@ class Zarr(Dataset):
         return [self.path] if overlaps else []
 
     def open(self, path=None, **kwargs):
-        """Open the Zarr dataset with authenticated path"""
+        """Open the Zarr store as an ``xarray.Dataset``.
+
+        The ``path`` argument is accepted for interface compatibility but
+        ignored; the store is always opened from ``self.path``.
+
+        Args:
+            path: Unused. Present for compatibility with the ``Dataset`` base
+                class interface.
+            **kwargs: Additional keyword arguments forwarded to
+                ``open_dataset`` (e.g. ``chunks`` for Dask lazy loading).
+
+        Returns:
+            An ``xarray.Dataset`` backed by the Zarr engine.
+        """
         return open_dataset(self.path, engine=self._xr_engine, **kwargs)
 
 

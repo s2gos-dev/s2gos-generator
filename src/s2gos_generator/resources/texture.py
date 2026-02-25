@@ -155,12 +155,12 @@ def generate_target_texture(ctx: SceneResourceContext) -> Optional[Path]:
     snow_material_index = None
     snow_thermoprops = None
 
-    if ctx.config.apply_seasonal_snow:
+    if ctx.config.snow is not None:
         dem_file_path = ctx.dependency_outputs["target_dem"]
-        season_month = ctx.config.snow_season_month
-        snow_material_index = ctx.config.snow_material_index
-        if ctx.config.snow_thermoprops:
-            snow_thermoprops = ctx.config.snow_thermoprops.thermoprops_file
+        season_month = ctx.config.snow.season_month
+        snow_material_index = ctx.config.snow.material_index
+        if ctx.config.snow.thermoprops:
+            snow_thermoprops = ctx.config.snow.thermoprops.thermoprops_file
 
         if dem_file_path is None:
             logging.warning("Seasonal snow requested but DEM not available")
@@ -204,17 +204,17 @@ def generate_buffer_texture(ctx: SceneResourceContext) -> Optional[Path]:
     snow_material_index = None
     snow_thermoprops = None
 
-    if ctx.config.apply_seasonal_snow:
+    if ctx.config.snow is not None:
         dem_file_path = ctx.dependency_outputs.get("buffer_dem")
-        season_month = ctx.config.snow_season_month
-        snow_material_index = ctx.config.snow_material_index
-        if ctx.config.snow_thermoprops:
-            snow_thermoprops = ctx.config.snow_thermoprops.thermoprops_file
+        season_month = ctx.config.snow.season_month
+        snow_material_index = ctx.config.snow.material_index
+        if ctx.config.snow.thermoprops:
+            snow_thermoprops = ctx.config.snow.thermoprops.thermoprops_file
 
         if dem_file_path is None:
             logging.warning("Seasonal snow requested for buffer but DEM not available")
 
-    buffer_resolution_m = ctx.config.buffer_resolution_m
+    buffer_resolution_m = ctx.config.buffer.resolution_m
     resolution_str = f"{buffer_resolution_m}m"
     selection_texture_path, preview_texture_path = _generate_texture(
         ctx,
@@ -254,7 +254,7 @@ def generate_background_texture(ctx: SceneResourceContext) -> Optional[Path]:
     snow_material_index = None
     snow_thermoprops = None
 
-    background_resolution_m = ctx.config.background_resolution_m
+    background_resolution_m = ctx.config.background.resolution_m
     selection_texture_path, preview_texture_path = _generate_texture(
         ctx,
         background_landcover_file_path,

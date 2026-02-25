@@ -30,9 +30,15 @@ def mock_path_validation(monkeypatch):
         else:
             return PathRef(filename, None)
 
-    monkeypatch.setattr("s2gos_generator.core.config.atmosphere._resolve_asset_path", mock_resolve)
-    monkeypatch.setattr("s2gos_generator.core.config.vegetation._resolve_asset_path", mock_resolve)
-    monkeypatch.setattr("s2gos_generator.core.config.assets._resolve_asset_path", mock_resolve)
+    monkeypatch.setattr(
+        "s2gos_generator.core.config.atmosphere._resolve_asset_path", mock_resolve
+    )
+    monkeypatch.setattr(
+        "s2gos_generator.core.config.vegetation._resolve_asset_path", mock_resolve
+    )
+    monkeypatch.setattr(
+        "s2gos_generator.core.config.assets._resolve_asset_path", mock_resolve
+    )
 
     class MockResolver:
         def resolve(self, path, strict=True):

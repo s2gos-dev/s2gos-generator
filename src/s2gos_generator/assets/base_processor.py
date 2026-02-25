@@ -5,17 +5,15 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 
-import geopandas as gpd
 import psutil
 import rioxarray as rxr
-from ..dataset import Dataset
 import xarray as xr
-from s2gos_utils.io.paths import exists, open_dataarray, read_geofeather
-from s2gos_utils.typing import PathLike
+from s2gos_utils.io.paths import open_dataarray
 from shapely.geometry import Polygon
 from upath import UPath
 
 from .datautil import regrid_to_projection
+from ..dataset import Dataset
 
 # Configure PROJ environment to fix "Cannot find proj.db" warnings
 try:
@@ -188,25 +186,29 @@ class BaseTileProcessor(ABC):
         try:
             if not hasattr(dataset.rio, "crs") or dataset.rio.crs is None:
                 dataset = dataset.rio.write_crs("EPSG:4326")
-                
+
             bounds = aoi_polygon.bounds
-            
+
             if "x" in dataset.dims:
                 x_dim = "x"
                 y_dim = "y"
             elif "lon" in dataset.dims:
                 x_dim = "lon"
                 y_dim = "lat"
-            
+
             lon_min, lat_min, lon_max, lat_max = aoi_polygon.bounds
 
             # Slices depend on the dimension direction, which can flip when merging
             lon = dataset[x_dim]
             lat = dataset[y_dim]
-            lon_slice = slice(lon_min, lon_max) if lon[0] < lon[-1] else slice(lon_max, lon_min)
-            lat_slice = slice(lat_min, lat_max) if lat[0] < lat[-1] else slice(lat_max, lat_min)
+            lon_slice = (
+                slice(lon_min, lon_max) if lon[0] < lon[-1] else slice(lon_max, lon_min)
+            )
+            lat_slice = (
+                slice(lat_min, lat_max) if lat[0] < lat[-1] else slice(lat_max, lat_min)
+            )
             # Select an area of computation lazily to cater for netcdf and zarr formats
-            dataset = dataset.sel({x_dim:lon_slice, y_dim:lat_slice})
+            dataset = dataset.sel({x_dim: lon_slice, y_dim: lat_slice})
 
             if not hasattr(dataset.rio, "_x_dim") or dataset.rio._x_dim is None:
                 dataset = dataset.rio.set_spatial_dims(x_dim=x_dim, y_dim=y_dim)

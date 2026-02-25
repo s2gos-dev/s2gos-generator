@@ -97,7 +97,7 @@ class SceneResourceContext:
         return self.config.hamster is not None and self.config.hamster.enabled
 
     @property
-    def coordinate_system(self):
+    def coordinate_system(self) -> "CoordinateSystem":
         """Get cached coordinate system for this scene.
 
         Returns:

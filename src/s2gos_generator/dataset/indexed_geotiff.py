@@ -1,4 +1,7 @@
+from typing import Any
+
 import geopandas as gpd
+import xarray as xr
 from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import resolver
@@ -75,10 +78,10 @@ class IndexedGeoTiff(Dataset):
             index_path=to_pathref(settings["index_path"]),
             root_directory=to_pathref(settings["root_directory"]),
             path_column=settings.get("path_column", None),
-            variable_name=settings.get("variable_name",None),
+            variable_name=settings.get("variable_name", None),
         )
 
-    def query(self, polygon: Polygon, **kwargs) -> list[UPath]:
+    def query(self, polygon: Polygon, **kwargs: Any) -> list[UPath]:
         """Return paths of all GeoTIFF tiles that intersect *polygon*.
 
         Performs a spatial join between the index GeoDataFrame and the
@@ -115,7 +118,7 @@ class IndexedGeoTiff(Dataset):
 
         return filepaths
 
-    def open(self, path, **kwargs):
+    def open(self, path: UPath | str, **kwargs: Any) -> xr.Dataset:
         """Open a single GeoTIFF tile as an ``xarray.Dataset``.
 
         Args:

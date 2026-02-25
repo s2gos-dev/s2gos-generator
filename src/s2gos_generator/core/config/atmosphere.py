@@ -104,8 +104,7 @@ class MolecularAtmosphereConfig(BaseModel):
     Attributes:
         type: Discriminator literal fixed to ``"molecular"``.
         thermoprops: Thermophysical profile (identifier or CAMS NetCDF file).
-        absorption_database: Database for gas absorption.
-        ``None`` disables absorption (equivalent to ``has_absorption=False``).
+        absorption_database: Database for gas absorption. ``None`` disables absorption (equivalent to ``has_absorption=False``).
         has_absorption: Enable gas absorption calculations.
         has_scattering: Enable Rayleigh scattering calculations.
     """
@@ -219,7 +218,7 @@ class ParticleLayerConfig(BaseModel):
 
     Attributes:
         aerosol_dataset: Aerosol dataset. Either an ``AerosolDataset`` enum
-         value or a path to a custom NetCDF file.
+            value or a path to a custom NetCDF file.
         optical_thickness: Column aerosol optical depth within this layer.
         altitude_bottom: Lower bound of the layer (m above sea level).
         altitude_top: Upper bound of the layer (m above sea level).

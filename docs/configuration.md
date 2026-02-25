@@ -6,7 +6,7 @@ The S2GOS generator is configured through `s2gos_settings.yaml`. The package sea
 
 The configuration structure depends on your installation:
 
-- `common`: Shared settings (see [s2gos-utils configuration](../../s2gos-utils/docs/configuration.md))
+- `common`: Shared settings (see s2gos-utils configuration)
 - `generator`: Generator-specific settings (this page)
 - `simulator`: Simulator-specific settings (see s2gos-simulator docs)
 
@@ -47,7 +47,7 @@ generator:
 
 ### `common` - Shared Settings
 
-See [s2gos-utils configuration](../../s2gos-utils/docs/configuration.md).
+See s2gos-utils documentation.
 
 ### `generator.dataset` - Dataset Sources
 
@@ -63,7 +63,7 @@ Land cover classification dataset. Tested with ESA WorldCover 2021.
 
 Datasets are specified as subobjects with a `type` field. Paths use **PathRef** format:
 - `value`: URI string (local or remote)
-- `cid`: Credential ID (optional) - see [Credentials](../../s2gos-utils/docs/credentials.md)
+- `cid`: Credential ID (optional) - see s2gos-utils credentials documentation
 
 #### Common Parameters
 

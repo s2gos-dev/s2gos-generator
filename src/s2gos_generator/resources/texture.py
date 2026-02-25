@@ -113,16 +113,18 @@ def _generate_texture(
     area_name: str,  # "target" | "buffer" | "background" — used for region filtering and log
 ) -> tuple[Path, Optional[Path]]:
     material_gen = TerrainMaterialGenerator()
-    selection_texture_path, preview_texture_path = material_gen.generate_textures_from_file(
-        landcover_file_path=landcover_path,
-        output_dir=ctx.textures_dir,
-        base_name=base_name,
-        create_preview=ctx.config.processing.generate_texture_preview,
-        dem_file_path=dem_file_path,
-        season_month=season_month,
-        snow_material_index=snow_material_index,
-        coordinate_system=ctx.coordinate_system,
-        snow_thermoprops=snow_thermoprops,
+    selection_texture_path, preview_texture_path = (
+        material_gen.generate_textures_from_file(
+            landcover_file_path=landcover_path,
+            output_dir=ctx.textures_dir,
+            base_name=base_name,
+            create_preview=ctx.config.processing.generate_texture_preview,
+            dem_file_path=dem_file_path,
+            season_month=season_month,
+            snow_material_index=snow_material_index,
+            coordinate_system=ctx.coordinate_system,
+            snow_thermoprops=snow_thermoprops,
+        )
     )
     if ctx.config.material_regions:
         applicable_regions = [
@@ -130,7 +132,10 @@ def _generate_texture(
         ]
         if applicable_regions:
             _apply_region_materials_to_texture(
-                selection_texture_path, landcover_path, applicable_regions, ctx,
+                selection_texture_path,
+                landcover_path,
+                applicable_regions,
+                ctx,
                 f"{area_name} texture",
             )
     return selection_texture_path, preview_texture_path

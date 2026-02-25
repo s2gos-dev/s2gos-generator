@@ -16,7 +16,9 @@ def _process_dem(
     aoi_size_km: float,
 ) -> Path:
     processor = DEMProcessor(dataset=ctx.config.data_sources.dem)
-    output_path = ctx.data_dir / f"{filename_prefix}_{ctx.scene_name}_{resolution_m}m.zarr"
+    output_path = (
+        ctx.data_dir / f"{filename_prefix}_{ctx.scene_name}_{resolution_m}m.zarr"
+    )
     processor.generate_dem(
         aoi_polygon=aoi_polygon,
         output_path=output_path,
@@ -44,7 +46,9 @@ def process_target_dem(ctx: SceneResourceContext) -> Optional[Path]:
     if aoi_polygon is None:
         raise ValueError("Target AOI polygon not found in context")
 
-    output_path = _process_dem(ctx, aoi_polygon, ctx.target_resolution_m, "dem", ctx.aoi_size_km)
+    output_path = _process_dem(
+        ctx, aoi_polygon, ctx.target_resolution_m, "dem", ctx.aoi_size_km
+    )
     ctx.assets.dem_file = output_path
 
     logging.info(f"Target DEM: {output_path}")
@@ -68,7 +72,11 @@ def process_buffer_dem(ctx: SceneResourceContext) -> Optional[Path]:
 
     buffer_resolution_m = ctx.config.buffer.resolution_m
     output_path = _process_dem(
-        ctx, buffer_aoi_polygon, buffer_resolution_m, "dem_buffer", ctx.config.buffer.size_km
+        ctx,
+        buffer_aoi_polygon,
+        buffer_resolution_m,
+        "dem_buffer",
+        ctx.config.buffer.size_km,
     )
     ctx.assets.buffer_dem_file = output_path
 

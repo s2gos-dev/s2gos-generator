@@ -1,8 +1,6 @@
-import logging
 from typing import Optional, Union
 
 import xarray as xr
-from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
 from upath import UPath
 
@@ -102,7 +100,9 @@ class LandCoverProcessor(BaseTileProcessor):
                 fillna_value=self.default_fill_value,
             )
 
-        clipped_landcover = clipped_landcover.rename({self.data_variable_name:"landcover"})
+        clipped_landcover = clipped_landcover.rename(
+            {self.data_variable_name: "landcover"}
+        )
 
         self._save_dataset(clipped_landcover, output_path)
 

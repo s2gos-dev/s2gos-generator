@@ -1,4 +1,5 @@
 from abc import ABC
+from typing import Any
 
 from pydantic import BaseModel, Field
 from s2gos_utils.typing import PathLike
@@ -25,7 +26,7 @@ class Dataset(ABC, BaseModel):
             "This dataset does not have the capacity to be queried from a polygon"
         )
 
-    def open(self, path=None):
+    def open(self, path=None) -> Any:
         """
         Use this function to open the dataset.
 

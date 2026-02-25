@@ -1,6 +1,8 @@
 import logging
+from typing import Any
 
 import geopandas as gpd
+import xarray as xr
 from dynaconf.utils.boxing import DynaBox
 from pydantic import Field, PrivateAttr, field_validator
 from s2gos_utils.io import PathRef, resolver
@@ -46,8 +48,7 @@ class Zarr(Dataset):
             raise ValueError(f"Path does not exist: {v}")
         return v
 
-
-    def query(self, polygon: Polygon, **kwargs) -> list[PathRef]:
+    def query(self, polygon: Polygon, **kwargs: Any) -> list[PathRef]:
         """Return the store path if its spatial extent intersects *polygon*.
 
         Opens the Zarr store to read coordinate bounds, then checks whether
@@ -101,7 +102,7 @@ class Zarr(Dataset):
 
         return [self.path] if overlaps else []
 
-    def open(self, path=None, **kwargs):
+    def open(self, path: PathRef | None = None, **kwargs: Any) -> xr.Dataset:
         """Open the Zarr store as an ``xarray.Dataset``.
 
         The ``path`` argument is accepted for interface compatibility but
@@ -117,5 +118,3 @@ class Zarr(Dataset):
             An ``xarray.Dataset`` backed by the Zarr engine.
         """
         return open_dataset(self.path, engine=self._xr_engine, **kwargs)
-
-

@@ -16,7 +16,9 @@ def _process_landcover(
     aoi_size_km: float,
 ) -> Path:
     processor = LandCoverProcessor(dataset=ctx.config.data_sources.landcover)
-    output_path = ctx.data_dir / f"{filename_prefix}_{ctx.scene_name}_{resolution_m}m.zarr"
+    output_path = (
+        ctx.data_dir / f"{filename_prefix}_{ctx.scene_name}_{resolution_m}m.zarr"
+    )
     processor.generate_landcover(
         aoi_polygon=aoi_polygon,
         output_path=output_path,
@@ -70,7 +72,11 @@ def process_buffer_landcover(ctx: SceneResourceContext) -> Optional[Path]:
 
     buffer_resolution_m = ctx.config.buffer.resolution_m
     output_path = _process_landcover(
-        ctx, buffer_aoi_polygon, buffer_resolution_m, "landcover_buffer", ctx.config.buffer.size_km
+        ctx,
+        buffer_aoi_polygon,
+        buffer_resolution_m,
+        "landcover_buffer",
+        ctx.config.buffer.size_km,
     )
     ctx.assets.buffer_landcover_file = output_path
 

@@ -1,7 +1,6 @@
 from typing import Optional, Union
 
 import xarray as xr
-from s2gos_utils.typing import PathLike
 from shapely.geometry import Polygon
 from upath import UPath
 
@@ -91,7 +90,7 @@ class DEMProcessor(BaseTileProcessor):
             )
 
         # Rename data variable to a predictable name
-        clipped_dem = clipped_dem.rename({self.data_variable_name:"elevation"})
+        clipped_dem = clipped_dem.rename({self.data_variable_name: "elevation"})
 
         self._save_dataset(clipped_dem, output_path)
 
